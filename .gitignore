@@ -228,3 +228,25 @@ resume*.txt
 data/
 *.sqlite
 *.sqlite-journal
+
+# --- Terraform ---
+# State can contain resource attributes and secret values in PLAINTEXT. Never commit it.
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+.terraform/
+.terraform.lock.hcl
+crash.log
+crash.*.log
+# Real variable values (may hold secrets); terraform.tfvars.example is the tracked template.
+*.tfvars
+!*.tfvars.example
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+# Saved plan files embed resource attributes and variable values — treat as sensitive.
+tfplan
+*.tfplan

@@ -1,0 +1,7 @@
+# Copy to terraform.tfvars and fill in. terraform.tfvars is gitignored.
+#
+# Note there are no SECRETS here: the Adzuna key is written straight to SSM out of band, so it
+# never touches terraform state. See ssm.tf.
+
+digest_email = "you@example.com"
+region       = "us-east-2"
