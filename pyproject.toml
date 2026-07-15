@@ -43,3 +43,9 @@ addopts = [
     "--strict-config",
     "-ra",
 ]
+filterwarnings = [
+    # A warning is how pytest reports a test it could not collect (PytestCollectionWarning).
+    # Left as a warning it scrolls past and the suite still says "passed" — which is exactly
+    # how ~50 tests stayed dead for two days. See tests/test_collection_guard.py.
+    "error",
+]
