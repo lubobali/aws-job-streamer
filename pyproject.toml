@@ -1,0 +1,45 @@
+# Tooling CONFIG ONLY.
+# Dependencies live in requirements.txt / requirements-dev.txt — never here.
+# This project is not packaged/installed; pytest resolves imports via `pythonpath`.
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "N",    # pep8-naming
+    "UP",   # pyupgrade
+    "B",    # bugbear
+    "C4",   # comprehensions
+    "SIM",  # simplify
+    "RET",  # return consistency
+    "PTH",  # use pathlib
+    "ANN",  # require type annotations
+    "TID",  # tidy imports
+    "PL",   # pylint
+    "RUF",  # ruff-specific
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Asserts and magic values are the point of a test.
+"tests/**" = ["PLR2004", "S101"]
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "parents"
+
+[tool.pytest.ini_options]
+# src layout: tests import `aws_job_streamer` without installing the package.
+pythonpath = ["src"]
+testpaths = ["tests", "src"]
+addopts = [
+    "--doctest-modules",   # pure functions carry doctests
+    "--strict-markers",
+    "--strict-config",
+    "-ra",
+]

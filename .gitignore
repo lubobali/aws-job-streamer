@@ -216,3 +216,15 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# --- aws-job-streamer: PUBLIC repo guardrails (never commit secrets or PII) ---
+# Real target profile / resume — only profile.example.json (sanitized) is tracked.
+profile.json
+resume*.pdf
+resume*.docx
+resume*.txt
+
+# Fetched + scored job data, application history
+data/
+*.sqlite
+*.sqlite-journal

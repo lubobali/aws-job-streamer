@@ -1,0 +1,4 @@
+# Production dependencies — the single source of truth for prod, CI, and local.
+# Installed with: uv pip install -r requirements.txt
+# uv is the installer only; dependencies are NOT declared in pyproject.toml.
+httpx==0.28.1
