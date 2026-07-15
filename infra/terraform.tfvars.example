@@ -3,5 +3,12 @@
 # Note there are no SECRETS here: the Adzuna key is written straight to SSM out of band, so it
 # never touches terraform state. See ssm.tf.
 
+# Where the digest is sent TO. Verified as an SES identity (the sandbox requires it).
 digest_email = "you@example.com"
-region       = "us-east-2"
+
+# Domain the digest is sent FROM — must be one you OWN. A free-mail domain (gmail.com) cannot
+# work: SES is not an authorised sender for it, so the mail fails DKIM/SPF and Gmail spam-files
+# it. Learned the hard way — SES reported 0 bounces and the mail still never arrived.
+sender_domain = "example.com"
+
+region = "us-east-2"
