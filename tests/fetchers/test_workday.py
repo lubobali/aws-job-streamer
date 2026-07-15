@@ -80,6 +80,27 @@ class TestParseSearch:
         with pytest.raises(FetchError):
             workday.parse_search({"errorCode": "HTTP_422"})
 
+    def test_one_unusable_posting_does_not_lose_the_whole_board(
+        self, search_payload: dict[str, Any]
+    ) -> None:
+        """Real GDIT data: 1 of 20 live postings is a bare stub with no title and no path.
+
+        {"bulletFields": ["RQ222505"]} — nothing to show and nothing to fetch. Letting it raise
+        would drop all 647 jobs on the board every 15 minutes because of one bad record.
+        """
+        search_payload["jobPostings"].insert(1, {"bulletFields": ["RQ222505"]})
+
+        stubs = workday.parse_search(search_payload)
+
+        assert len(stubs) == 4  # the four real postings survive; the stub is dropped
+        assert all(stub.title and stub.external_path for stub in stubs)
+
+    def test_a_posting_without_an_external_path_is_dropped(self) -> None:
+        """Without externalPath there is no detail call to make and no link to send."""
+        payload = {"total": 1, "jobPostings": [{"title": "Data Engineer", "bulletFields": []}]}
+
+        assert workday.parse_search(payload) == []
+
 
 class TestParseDetail:
     def test_maps_the_core_fields(self, detail_payload: dict[str, Any]) -> None:

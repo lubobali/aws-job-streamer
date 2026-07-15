@@ -151,21 +151,34 @@ def _search_page(
 
 
 def parse_search(payload: dict[str, Any]) -> list[JobStub]:
-    """Normalize a raw search payload into stubs. Pure — no clock, no network."""
+    """Normalize a raw search payload into stubs, dropping any posting we cannot act on.
+
+    Pure — no clock, no network.
+
+    Real GDIT data contains bare stubs: 1 of 20 live postings was `{"bulletFields": ["RQ222505"]}`
+    with no title and no externalPath — nothing to display and nothing to fetch. Raising on it
+    would throw away all 647 jobs on the board every 15 minutes over one bad record, so an
+    unusable posting is skipped while the rest survive.
+    """
     postings = payload.get("jobPostings")
     if not isinstance(postings, list):
         # Decision Log #8: validate the body. A rejected query answers 200-shaped error objects
         # with no jobPostings key; that is not an empty board.
         raise FetchError(f"unexpected workday search payload: keys={sorted(payload)[:5]}")
-    return [
-        JobStub(
-            title=p["title"],
-            external_path=p["externalPath"],
-            location=p.get("locationsText") or "",
-            req_id=next(iter(p.get("bulletFields") or []), None),
-        )
-        for p in postings
-    ]
+    return [stub for p in postings if (stub := _parse_stub(p)) is not None]
+
+
+def _parse_stub(raw: dict[str, Any]) -> JobStub | None:
+    """Return a JobStub, or None if the posting lacks the fields that make it actionable."""
+    title, path = raw.get("title"), raw.get("externalPath")
+    if not title or not path:
+        return None
+    return JobStub(
+        title=title,
+        external_path=path,
+        location=raw.get("locationsText") or "",
+        req_id=next(iter(raw.get("bulletFields") or []), None),
+    )
 
 
 def hydrate(
