@@ -164,19 +164,22 @@ class TestJobId:
         assert len({job.job_id for job in jobs}) == len(jobs)
 
 
-@respx.mock
 class TestFetchJobs:
-    def test_requests_the_documented_endpoint(self, payload: list[dict[str, Any]]) -> None:
-        route = respx.get("https://api.lever.co/v0/postings/spotify", params={"mode": "json"}).mock(
-            return_value=httpx.Response(200, json=payload)
-        )
+    def test_requests_the_documented_endpoint(
+        self, respx_mock: respx.MockRouter, payload: list[dict[str, Any]]
+    ) -> None:
+        route = respx_mock.get(
+            "https://api.lever.co/v0/postings/spotify", params={"mode": "json"}
+        ).mock(return_value=httpx.Response(200, json=payload))
 
         lever.fetch_jobs("spotify", company=COMPANY)
 
         assert route.called
 
-    def test_returns_normalized_jobs(self, payload: list[dict[str, Any]]) -> None:
-        respx.get(url__startswith="https://api.lever.co").mock(
+    def test_returns_normalized_jobs(
+        self, respx_mock: respx.MockRouter, payload: list[dict[str, Any]]
+    ) -> None:
+        respx_mock.get(url__startswith="https://api.lever.co").mock(
             return_value=httpx.Response(200, json=payload)
         )
 
@@ -186,16 +189,18 @@ class TestFetchJobs:
         assert jobs[0].company == "Spotify"
 
     def test_company_defaults_to_the_slug_when_not_given(
-        self, payload: list[dict[str, Any]]
+        self, respx_mock: respx.MockRouter, payload: list[dict[str, Any]]
     ) -> None:
-        respx.get(url__startswith="https://api.lever.co").mock(
+        respx_mock.get(url__startswith="https://api.lever.co").mock(
             return_value=httpx.Response(200, json=payload)
         )
 
         assert lever.fetch_jobs("spotify")[0].company == "spotify"
 
-    def test_stamps_fetched_at_from_the_injected_clock(self, payload: list[dict[str, Any]]) -> None:
-        respx.get(url__startswith="https://api.lever.co").mock(
+    def test_stamps_fetched_at_from_the_injected_clock(
+        self, respx_mock: respx.MockRouter, payload: list[dict[str, Any]]
+    ) -> None:
+        respx_mock.get(url__startswith="https://api.lever.co").mock(
             return_value=httpx.Response(200, json=payload)
         )
 
@@ -204,29 +209,33 @@ class TestFetchJobs:
         assert all(job.fetched_at == FETCHED_AT for job in jobs)
 
     @pytest.mark.parametrize("status", [404, 429, 500])
-    def test_http_error_raises_fetch_error_naming_the_board(self, status: int) -> None:
-        respx.get(url__startswith="https://api.lever.co").mock(
+    def test_http_error_raises_fetch_error_naming_the_board(
+        self, respx_mock: respx.MockRouter, status: int
+    ) -> None:
+        respx_mock.get(url__startswith="https://api.lever.co").mock(
             return_value=httpx.Response(status, json={"ok": False, "error": "Document not found"})
         )
 
         with pytest.raises(FetchError, match="nosuchboard"):
             lever.fetch_jobs("nosuchboard")
 
-    def test_error_object_instead_of_a_list_raises_fetch_error(self) -> None:
+    def test_error_object_instead_of_a_list_raises_fetch_error(
+        self, respx_mock: respx.MockRouter
+    ) -> None:
         """Decision Log #8: validate the content, never the status code.
 
         Lever answers an unknown slug with 200 + {"ok": false} on some paths; a bare error
         object must never be mistaken for a board with no jobs.
         """
-        respx.get(url__startswith="https://api.lever.co").mock(
+        respx_mock.get(url__startswith="https://api.lever.co").mock(
             return_value=httpx.Response(200, json={"ok": False, "error": "Document not found"})
         )
 
         with pytest.raises(FetchError):
             lever.fetch_jobs("nosuchboard")
 
-    def test_network_failure_raises_fetch_error(self) -> None:
-        respx.get(url__startswith="https://api.lever.co").mock(
+    def test_network_failure_raises_fetch_error(self, respx_mock: respx.MockRouter) -> None:
+        respx_mock.get(url__startswith="https://api.lever.co").mock(
             side_effect=httpx.ConnectError("connection refused")
         )
 

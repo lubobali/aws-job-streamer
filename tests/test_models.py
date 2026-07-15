@@ -78,3 +78,22 @@ class TestJob:
         assert job.posted_at is None
         assert job.remote is False
         assert job.description == ""
+
+
+class TestSalaryIsEstimated:
+    """Some sources guess a salary and present it like a fact.
+
+    Adzuna predicts one for 34 of 50 live results (min==max point estimates). Ashby's comes
+    from the employer. A digest that shows both identically would be lying, so the flag travels
+    with the number rather than the number being silently dropped.
+    """
+
+    def test_defaults_to_false_so_a_salary_is_trusted_unless_flagged(self) -> None:
+        assert a_job(salary="$151K - $231K").salary_is_estimated is False
+
+    def test_can_mark_a_guessed_salary(self) -> None:
+        assert a_job(salary="$119,026", salary_is_estimated=True).salary_is_estimated is True
+
+    def test_does_not_change_the_dedup_key(self) -> None:
+        """It is metadata about the posting, not identity."""
+        assert a_job(salary_is_estimated=True).job_id == a_job(salary_is_estimated=False).job_id

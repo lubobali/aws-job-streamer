@@ -51,6 +51,13 @@ class Job:
     location: str | None = None
     remote: bool = False
     salary: str | None = None
+    salary_is_estimated: bool = False
+    """True when the SOURCE guessed the number rather than the employer stating it.
+
+    Adzuna predicts a salary for ~2/3 of results and presents it identically to a real one
+    (a min==max point estimate). Ashby's comes from the employer. Dropping a guess entirely
+    would lose information; showing it unlabelled would be a lie — so the flag travels with it.
+    """
     description: str = ""
     posted_at: datetime | None = None
     fetched_at: datetime | None = None

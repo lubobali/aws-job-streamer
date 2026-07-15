@@ -145,12 +145,11 @@ class TestJobId:
         assert len({job.job_id for job in jobs}) == len(jobs)
 
 
-@respx.mock
 class TestFetchJobs:
     def test_requests_the_documented_endpoint_with_full_content(
-        self, payload: dict[str, Any]
+        self, respx_mock: respx.MockRouter, payload: dict[str, Any]
     ) -> None:
-        route = respx.get(
+        route = respx_mock.get(
             "https://boards-api.greenhouse.io/v1/boards/anthropic/jobs",
             params={"content": "true"},
         ).mock(return_value=httpx.Response(200, json=payload))
@@ -159,8 +158,10 @@ class TestFetchJobs:
 
         assert route.called
 
-    def test_returns_normalized_jobs(self, payload: dict[str, Any]) -> None:
-        respx.get(url__startswith="https://boards-api.greenhouse.io").mock(
+    def test_returns_normalized_jobs(
+        self, respx_mock: respx.MockRouter, payload: dict[str, Any]
+    ) -> None:
+        respx_mock.get(url__startswith="https://boards-api.greenhouse.io").mock(
             return_value=httpx.Response(200, json=payload)
         )
 
@@ -169,8 +170,10 @@ class TestFetchJobs:
         assert len(jobs) == 4
         assert jobs[0].company == "Anthropic"
 
-    def test_stamps_fetched_at_from_the_injected_clock(self, payload: dict[str, Any]) -> None:
-        respx.get(url__startswith="https://boards-api.greenhouse.io").mock(
+    def test_stamps_fetched_at_from_the_injected_clock(
+        self, respx_mock: respx.MockRouter, payload: dict[str, Any]
+    ) -> None:
+        respx_mock.get(url__startswith="https://boards-api.greenhouse.io").mock(
             return_value=httpx.Response(200, json=payload)
         )
 
@@ -179,25 +182,27 @@ class TestFetchJobs:
         assert all(job.fetched_at == FETCHED_AT for job in jobs)
 
     @pytest.mark.parametrize("status", [404, 429, 500, 503])
-    def test_http_error_raises_fetch_error_naming_the_board(self, status: int) -> None:
+    def test_http_error_raises_fetch_error_naming_the_board(
+        self, respx_mock: respx.MockRouter, status: int
+    ) -> None:
         """One dead board must be diagnosable, and must not be mistaken for zero jobs."""
-        respx.get(url__startswith="https://boards-api.greenhouse.io").mock(
+        respx_mock.get(url__startswith="https://boards-api.greenhouse.io").mock(
             return_value=httpx.Response(status)
         )
 
         with pytest.raises(FetchError, match="nosuchboard"):
             greenhouse.fetch_jobs("nosuchboard")
 
-    def test_network_failure_raises_fetch_error(self) -> None:
-        respx.get(url__startswith="https://boards-api.greenhouse.io").mock(
+    def test_network_failure_raises_fetch_error(self, respx_mock: respx.MockRouter) -> None:
+        respx_mock.get(url__startswith="https://boards-api.greenhouse.io").mock(
             side_effect=httpx.ConnectError("connection refused")
         )
 
         with pytest.raises(FetchError):
             greenhouse.fetch_jobs("anthropic")
 
-    def test_malformed_payload_raises_fetch_error(self) -> None:
-        respx.get(url__startswith="https://boards-api.greenhouse.io").mock(
+    def test_malformed_payload_raises_fetch_error(self, respx_mock: respx.MockRouter) -> None:
+        respx_mock.get(url__startswith="https://boards-api.greenhouse.io").mock(
             return_value=httpx.Response(200, text="<html>maintenance</html>")
         )
 

@@ -177,12 +177,11 @@ class TestJobId:
         assert len({job.job_id for job in jobs}) == len(jobs)
 
 
-@respx.mock
 class TestFetchJobs:
     def test_requests_the_documented_endpoint_with_compensation(
-        self, payload: dict[str, Any]
+        self, respx_mock: respx.MockRouter, payload: dict[str, Any]
     ) -> None:
-        route = respx.get(
+        route = respx_mock.get(
             "https://api.ashbyhq.com/posting-api/job-board/ramp",
             params={"includeCompensation": "true"},
         ).mock(return_value=httpx.Response(200, json=payload))
@@ -191,8 +190,10 @@ class TestFetchJobs:
 
         assert route.called
 
-    def test_returns_normalized_jobs(self, payload: dict[str, Any]) -> None:
-        respx.get(url__startswith="https://api.ashbyhq.com").mock(
+    def test_returns_normalized_jobs(
+        self, respx_mock: respx.MockRouter, payload: dict[str, Any]
+    ) -> None:
+        respx_mock.get(url__startswith="https://api.ashbyhq.com").mock(
             return_value=httpx.Response(200, json=payload)
         )
 
@@ -201,15 +202,19 @@ class TestFetchJobs:
         assert len(jobs) == 4
         assert jobs[0].salary == "$151K - $231K"
 
-    def test_company_defaults_to_the_slug(self, payload: dict[str, Any]) -> None:
-        respx.get(url__startswith="https://api.ashbyhq.com").mock(
+    def test_company_defaults_to_the_slug(
+        self, respx_mock: respx.MockRouter, payload: dict[str, Any]
+    ) -> None:
+        respx_mock.get(url__startswith="https://api.ashbyhq.com").mock(
             return_value=httpx.Response(200, json=payload)
         )
 
         assert ashby.fetch_jobs("ramp")[0].company == "ramp"
 
-    def test_stamps_fetched_at_from_the_injected_clock(self, payload: dict[str, Any]) -> None:
-        respx.get(url__startswith="https://api.ashbyhq.com").mock(
+    def test_stamps_fetched_at_from_the_injected_clock(
+        self, respx_mock: respx.MockRouter, payload: dict[str, Any]
+    ) -> None:
+        respx_mock.get(url__startswith="https://api.ashbyhq.com").mock(
             return_value=httpx.Response(200, json=payload)
         )
 
@@ -218,25 +223,27 @@ class TestFetchJobs:
         assert all(job.fetched_at == FETCHED_AT for job in jobs)
 
     @pytest.mark.parametrize("status", [404, 429, 500])
-    def test_http_error_raises_fetch_error_naming_the_board(self, status: int) -> None:
-        respx.get(url__startswith="https://api.ashbyhq.com").mock(
+    def test_http_error_raises_fetch_error_naming_the_board(
+        self, respx_mock: respx.MockRouter, status: int
+    ) -> None:
+        respx_mock.get(url__startswith="https://api.ashbyhq.com").mock(
             return_value=httpx.Response(status, text="Not Found")
         )
 
         with pytest.raises(FetchError, match="nosuchboard"):
             ashby.fetch_jobs("nosuchboard")
 
-    def test_non_json_body_raises_fetch_error(self) -> None:
+    def test_non_json_body_raises_fetch_error(self, respx_mock: respx.MockRouter) -> None:
         """A real unknown Ashby slug answers with the bare text "Not Found"."""
-        respx.get(url__startswith="https://api.ashbyhq.com").mock(
+        respx_mock.get(url__startswith="https://api.ashbyhq.com").mock(
             return_value=httpx.Response(200, text="Not Found")
         )
 
         with pytest.raises(FetchError):
             ashby.fetch_jobs("nosuchboard")
 
-    def test_network_failure_raises_fetch_error(self) -> None:
-        respx.get(url__startswith="https://api.ashbyhq.com").mock(
+    def test_network_failure_raises_fetch_error(self, respx_mock: respx.MockRouter) -> None:
+        respx_mock.get(url__startswith="https://api.ashbyhq.com").mock(
             side_effect=httpx.ConnectError("connection refused")
         )
 

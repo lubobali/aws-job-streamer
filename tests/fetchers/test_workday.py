@@ -201,7 +201,6 @@ class TestRemoteDetection:
         assert job.remote is False
 
 
-@respx.mock
 class TestDiscoverBoard:
     """The site name is unguessable — a wrong guess returns 422, not 404.
 
@@ -209,8 +208,11 @@ class TestDiscoverBoard:
     brute-forcing site names.
     """
 
-    def test_reads_the_site_name_from_the_sitemap_line(self) -> None:
-        respx.get("https://gdit.wd5.myworkdayjobs.com/robots.txt").mock(
+    def test_reads_the_site_name_from_the_sitemap_line(self, respx_mock: respx.MockRouter) -> None:
+        respx_mock.get(url__regex=r"https://gdit\.wd[123]\.myworkdayjobs\.com/robots\.txt").mock(
+            return_value=httpx.Response(404)
+        )
+        respx_mock.get("https://gdit.wd5.myworkdayjobs.com/robots.txt").mock(
             return_value=httpx.Response(200, text=ROBOTS.read_text())
         )
 
@@ -220,11 +222,11 @@ class TestDiscoverBoard:
             tenant="gdit", site="External_Career_Site", host="gdit.wd5.myworkdayjobs.com"
         )
 
-    def test_tries_each_workday_host_until_one_answers(self) -> None:
-        respx.get(url__regex=r"https://gdit\.wd[123]\.myworkdayjobs\.com/robots\.txt").mock(
+    def test_tries_each_workday_host_until_one_answers(self, respx_mock: respx.MockRouter) -> None:
+        respx_mock.get(url__regex=r"https://gdit\.wd[123]\.myworkdayjobs\.com/robots\.txt").mock(
             return_value=httpx.Response(404)
         )
-        respx.get("https://gdit.wd5.myworkdayjobs.com/robots.txt").mock(
+        respx_mock.get("https://gdit.wd5.myworkdayjobs.com/robots.txt").mock(
             return_value=httpx.Response(200, text=ROBOTS.read_text())
         )
 
@@ -233,25 +235,24 @@ class TestDiscoverBoard:
         assert board is not None
         assert board.host == "gdit.wd5.myworkdayjobs.com"
 
-    def test_unknown_tenant_returns_none(self) -> None:
-        respx.get(url__regex=r".*robots\.txt").mock(return_value=httpx.Response(404))
+    def test_unknown_tenant_returns_none(self, respx_mock: respx.MockRouter) -> None:
+        respx_mock.get(url__regex=r".*robots\.txt").mock(return_value=httpx.Response(404))
 
         assert workday.discover_board("nosuchtenant") is None
 
-    def test_robots_without_a_sitemap_line_returns_none(self) -> None:
-        respx.get(url__regex=r".*robots\.txt").mock(
+    def test_robots_without_a_sitemap_line_returns_none(self, respx_mock: respx.MockRouter) -> None:
+        respx_mock.get(url__regex=r".*robots\.txt").mock(
             return_value=httpx.Response(200, text="User-agent: *\nDisallow: /")
         )
 
         assert workday.discover_board("gdit") is None
 
 
-@respx.mock
 class TestSearch:
     def test_posts_the_query_to_the_documented_endpoint(
-        self, search_payload: dict[str, Any]
+        self, respx_mock: respx.MockRouter, search_payload: dict[str, Any]
     ) -> None:
-        route = respx.post(
+        route = respx_mock.post(
             "https://gdit.wd5.myworkdayjobs.com/wday/cxs/gdit/External_Career_Site/jobs"
         ).mock(return_value=httpx.Response(200, json=search_payload))
 
@@ -261,10 +262,10 @@ class TestSearch:
         assert json.loads(route.calls[0].request.content)["searchText"] == "data engineer"
 
     def test_never_requests_more_than_the_api_cap_of_20(
-        self, search_payload: dict[str, Any]
+        self, respx_mock: respx.MockRouter, search_payload: dict[str, Any]
     ) -> None:
         """limit=50 is rejected by Workday with an error object, so the page size is fixed."""
-        route = respx.post(url__regex=r".*/jobs").mock(
+        route = respx_mock.post(url__regex=r".*/jobs").mock(
             return_value=httpx.Response(200, json=search_payload)
         )
 
@@ -272,30 +273,34 @@ class TestSearch:
 
         assert all(json.loads(c.request.content)["limit"] <= 20 for c in route.calls)
 
-    def test_stops_once_max_results_is_reached(self, search_payload: dict[str, Any]) -> None:
-        respx.post(url__regex=r".*/jobs").mock(
+    def test_stops_once_max_results_is_reached(
+        self, respx_mock: respx.MockRouter, search_payload: dict[str, Any]
+    ) -> None:
+        respx_mock.post(url__regex=r".*/jobs").mock(
             return_value=httpx.Response(200, json=search_payload)
         )
 
         assert len(workday.search(BOARD, "data engineer", max_results=2)) == 2
 
-    def test_http_error_raises_fetch_error(self) -> None:
-        respx.post(url__regex=r".*/jobs").mock(return_value=httpx.Response(422))
+    def test_http_error_raises_fetch_error(self, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(url__regex=r".*/jobs").mock(return_value=httpx.Response(422))
 
         with pytest.raises(FetchError, match="gdit"):
             workday.search(BOARD, "data engineer")
 
 
-@respx.mock
 class TestFetchJobs:
     def test_searches_then_hydrates_only_the_stubs_it_keeps(
-        self, search_payload: dict[str, Any], detail_payload: dict[str, Any]
+        self,
+        respx_mock: respx.MockRouter,
+        search_payload: dict[str, Any],
+        detail_payload: dict[str, Any],
     ) -> None:
         """The whole point of the two-stage design: 1064 hits must not mean 1064 detail calls."""
-        respx.post(url__regex=r".*/jobs").mock(
+        respx_mock.post(url__regex=r".*/jobs").mock(
             return_value=httpx.Response(200, json=search_payload)
         )
-        detail = respx.get(url__regex=r".*/job/.*").mock(
+        detail = respx_mock.get(url__regex=r".*/job/.*").mock(
             return_value=httpx.Response(200, json=detail_payload)
         )
 
@@ -305,13 +310,18 @@ class TestFetchJobs:
         assert detail.call_count == 2
 
     def test_a_single_dead_detail_call_does_not_lose_the_whole_board(
-        self, search_payload: dict[str, Any], detail_payload: dict[str, Any]
+        self,
+        respx_mock: respx.MockRouter,
+        search_payload: dict[str, Any],
+        detail_payload: dict[str, Any],
     ) -> None:
-        respx.post(url__regex=r".*/jobs").mock(
+        respx_mock.post(url__regex=r".*/jobs").mock(
             return_value=httpx.Response(200, json=search_payload)
         )
-        respx.get(url__regex=r".*Data-Engineer_RQ216675").mock(return_value=httpx.Response(500))
-        respx.get(url__regex=r".*/job/.*").mock(
+        respx_mock.get(url__regex=r".*Data-Engineer_RQ216675").mock(
+            return_value=httpx.Response(500)
+        )
+        respx_mock.get(url__regex=r".*/job/.*").mock(
             return_value=httpx.Response(200, json=detail_payload)
         )
 
