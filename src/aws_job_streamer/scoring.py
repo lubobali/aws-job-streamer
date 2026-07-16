@@ -86,7 +86,9 @@ CANDIDATE
   Headline: {profile.get("headline", "")}
   Years of engineering experience: {profile.get("years_engineering", "?")}
   Skills he HAS (shipped, can defend in an interview): {have}
-  Skills he is BUILDING (in progress, do NOT claim as experience): {building}
+  Skills he is SHIPPING IN PRODUCTION RIGHT NOW (count these as REAL, demonstrable
+    capability — he can do this work today; at most note in a single clause that a
+    few are recently acquired, and NEVER treat them as absent or as a major gap): {building}
   Core domains (his home turf): {core_domains}
   Secondary domains (a genuine but MINOR plus — a modest bump, never enough to
     rescue a weak skills match on its own): {secondary_domains}
@@ -120,11 +122,11 @@ applied to, so follow them over your own instincts:
   Software Engineer - Data" and "Data Insights Engineer" are all ordinary data-engineering roles
   he targeted, while "Data Center Architect" is a building-infrastructure job and a near-zero fit.
 
-- **DO NOT penalise a years gap below {years_wall}.** This is the single biggest mistake to
-  avoid. He has {years} years and actively applies to roles asking 1-3, 4-8, 5+ and 6+ — a
-  "5+ years" line is NOT a meaningful negative and must barely move the score. Only set
-  "years_far_above" when the posting demands {years_wall}+ years, which is his real wall.
-  Score on SKILL and DISCIPLINE match, not on the years number.
+- **A years requirement below {years_wall} is NOT a negative — do not let it lower the score,
+  and do not mention it in your reason.** This is the single biggest mistake to avoid. He has
+  {years} years and actively applies to roles asking 1-3, 4-8, 5+ and 6+; a "5+ years" line is
+  normal and expected, not a gap. Treat years as neutral unless the posting demands {years_wall}+
+  years — only then set "years_far_above" and let it matter. Score on SKILL and DISCIPLINE match.
 
 - **"azure_mandatory" ONLY when Azure is the required cloud.** "AWS, Azure, or GCP" is not it,
   and "Azure DevOps" is a CI tool, not a cloud mandate. He applied to three roles naming Azure.
