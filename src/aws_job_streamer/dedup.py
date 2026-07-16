@@ -118,6 +118,23 @@ class JobStore:
             for item in items:
                 batch.put_item(Item=item)
 
+    def mark_emailed(self, job_ids: Iterable[str]) -> None:
+        """Flip jobs from "new" to "emailed" after the digest has actually gone out.
+
+        Goal #4 extends to email: a job stays "new" and re-sendable until this runs, so a failed
+        send never buries a job (the digest sends first, then calls this). Updates the status
+        field only, preserving the score and reason the digest was built from. There is no batch
+        UpdateItem, but a digest is ~10 jobs so per-item updates are cheap.
+        """
+        table = self._table
+        for job_id in job_ids:
+            table.update_item(
+                Key={"job_id": job_id},
+                UpdateExpression="SET #status = :emailed",
+                ExpressionAttributeNames={"#status": "status"},
+                ExpressionAttributeValues={":emailed": "emailed"},
+            )
+
     def get(self, job_id: str) -> dict[str, Any] | None:
         """Return the stored record for `job_id`, or None."""
         return self._table.get_item(Key={"job_id": job_id}).get("Item")

@@ -241,3 +241,36 @@ class TestSaveNew:
         store.save_new(ranked)
 
         assert store.new_jobs_only([a_job(str(n)) for n in range(60)]) == []
+
+
+class TestMarkEmailed:
+    """Goal #4 extends to email: never send the same job twice.
+
+    The digest sends, then flips its jobs new -> emailed. A job stays new (re-sendable) until the
+    email actually goes out — send-then-mark, so a failed send never buries a job.
+    """
+
+    def test_flips_status_to_emailed(self, store: JobStore) -> None:
+        store.save_new([a_ranked("1")])
+
+        store.mark_emailed([a_job("1").job_id])
+
+        assert stored(store)["status"] == "emailed"
+
+    def test_an_emailed_job_keeps_its_score(self, store: JobStore) -> None:
+        """Marking emailed must not wipe the record the digest was built from."""
+        store.save_new([a_ranked("1", score=92)])
+
+        store.mark_emailed([a_job("1").job_id])
+
+        assert stored(store)["fit_score"] == 92
+
+    def test_marking_nothing_is_not_an_error(self, store: JobStore) -> None:
+        store.mark_emailed([])
+
+    def test_marks_more_than_one_job(self, store: JobStore) -> None:
+        store.save_new([a_ranked(str(n)) for n in range(5)])
+
+        store.mark_emailed([a_job(str(n)).job_id for n in range(5)])
+
+        assert all(stored(store, str(n))["status"] == "emailed" for n in range(5))
