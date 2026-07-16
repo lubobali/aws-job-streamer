@@ -1,7 +1,7 @@
 """The Ashby fetcher, tested against a real recorded board response.
 
 Fixture: tests/fixtures/ashby_jobs.json — four real Ramp postings from api.ashbyhq.com.
-Ashby is the richest source so far: it states isRemote outright, publishes a clean ISO
+Ashby is the richest source so far: it states workplaceType outright, publishes a clean ISO
 timestamp, ships a complete descriptionPlain, and — uniquely — carries REAL employer salary.
 """
 
@@ -104,23 +104,30 @@ class TestPostedAt:
 
 
 class TestRemoteDetection:
-    """Ashby states isRemote outright — no guessing from the location string."""
+    """Remote comes from `workplaceType`, NOT `isRemote`.
 
-    def test_remote_is_remote(self, jobs: list[Any]) -> None:
+    `isRemote` is unreliable — on the live Ramp board it was True for 119 of 126 jobs, including
+    101 Hybrid and several OnSite roles. Trusting it flagged a Hybrid-NYC job as remote and put it
+    in the top tier (the bug Lubo caught opening the digest). `workplaceType` is authoritative.
+    """
+
+    def test_remote_workplace_type_is_remote(self, jobs: list[Any]) -> None:
         assert jobs[REMOTE_WITH_SALARY].remote is True
 
     def test_onsite_is_not_remote(self, jobs: list[Any]) -> None:
         assert jobs[ONSITE_NO_SALARY].remote is False
 
-    def test_hq_located_but_remote_flagged_job_is_remote(self, jobs: list[Any]) -> None:
-        """Location reads "New York, NY (HQ)" but isRemote is True — trust the flag."""
+    def test_a_hybrid_job_is_not_remote_even_when_isremote_is_true(self, jobs: list[Any]) -> None:
+        """The exact bug: fixture job 2 is workplaceType=Hybrid at "New York, NY (HQ)" but Ashby
+        reports isRemote=True. It must NOT be flagged remote."""
         job = jobs[REMOTE_SECONDARY]
-        assert "Remote" not in job.location.split(",")[0]
-        assert job.remote is True
 
-    def test_missing_is_remote_defaults_to_not_remote(self) -> None:
+        assert "New York, NY (HQ)" in job.location
+        assert job.remote is False
+
+    def test_missing_workplace_type_defaults_to_not_remote(self) -> None:
         raw = _minimal_raw_job()
-        del raw["isRemote"]
+        raw.pop("workplaceType", None)
 
         job = ashby.parse_board({"jobs": [raw]}, company=COMPANY, fetched_at=FETCHED_AT)[0]
 

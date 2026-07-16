@@ -4,7 +4,7 @@
 
 No auth. No server-side search, so we fetch a board whole.
 
-The richest source we have. Unlike Greenhouse and Lever it states `isRemote` outright, publishes
+The richest source we have. It states `workplaceType` (Remote/Hybrid/OnSite) outright, publishes
 a clean ISO-8601 `publishedAt`, ships a complete `descriptionPlain`, and — uniquely — carries the
 employer's own salary range. `includeCompensation=true` is required to get it.
 """
@@ -87,12 +87,30 @@ def _parse_job(raw: dict[str, Any], *, company: str, fetched_at: datetime) -> Jo
         title=raw["title"],
         url=raw["jobUrl"],
         location=_join_locations(raw),
-        remote=bool(raw.get("isRemote", False)),
+        remote=_is_remote(raw),
         salary=_salary(raw),
         description=to_plain_text(raw.get("descriptionPlain") or ""),
         posted_at=_parse_published_at(raw.get("publishedAt")),
         fetched_at=fetched_at,
     )
+
+
+def _is_remote(raw: dict[str, Any]) -> bool:
+    """Report whether a posting is genuinely remote — from `workplaceType`, NOT `isRemote`.
+
+    `isRemote` is unreliable: measured on the live Ramp board it was True for 119 of 126 jobs,
+    including 101 that are actually Hybrid and even OnSite roles (Ashby sets it True whenever any
+    location option is remote-friendly). Trusting it flagged a Hybrid-NYC role as remote and put
+    it in the top tier. `workplaceType` states the real arrangement: "Remote", "Hybrid", "OnSite".
+
+    >>> _is_remote({"workplaceType": "Remote", "isRemote": True})
+    True
+    >>> _is_remote({"workplaceType": "Hybrid", "isRemote": True})
+    False
+    >>> _is_remote({"isRemote": True})
+    False
+    """
+    return (raw.get("workplaceType") or "").lower() == "remote"
 
 
 def _join_locations(raw: dict[str, Any]) -> str | None:
