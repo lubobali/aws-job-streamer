@@ -1,0 +1,44 @@
+"""The watchlist — probe-verified boards turned into pipeline fetchers."""
+
+from __future__ import annotations
+
+from aws_job_streamer.watchlist import WATCHLIST, Board, to_fetchers
+
+
+class TestWatchlist:
+    def test_every_board_uses_a_known_fetcher(self) -> None:
+        assert all(b.source in {"greenhouse", "lever", "ashby"} for b in WATCHLIST)
+
+    def test_slugs_are_unique_per_source(self) -> None:
+        """A duplicated board would fetch, score and pay for the same jobs twice."""
+        keys = [(b.source, b.slug) for b in WATCHLIST]
+        assert len(keys) == len(set(keys))
+
+    def test_no_board_is_missing_a_company_name(self) -> None:
+        assert all(b.company and b.slug for b in WATCHLIST)
+
+    def test_the_list_is_non_trivial(self) -> None:
+        assert len(WATCHLIST) >= 20
+
+
+class TestToFetchers:
+    def test_produces_one_callable_per_board(self) -> None:
+        boards = [Board("greenhouse", "acme", "Acme"), Board("ashby", "beta", "Beta")]
+
+        fetchers = to_fetchers(boards)
+
+        assert len(fetchers) == 2
+        assert all(callable(f) for f in fetchers)
+
+    def test_binds_each_board_independently(self) -> None:
+        """Late-binding closures are a classic loop bug: every fetcher must keep its OWN slug."""
+        boards = [Board("greenhouse", "one", "One"), Board("greenhouse", "two", "Two")]
+
+        fetchers = to_fetchers(boards)
+
+        # partial keeps the bound slug as the first positional arg.
+        assert fetchers[0].args[0] == "one"  # type: ignore[attr-defined]
+        assert fetchers[1].args[0] == "two"  # type: ignore[attr-defined]
+
+    def test_defaults_to_the_full_watchlist(self) -> None:
+        assert len(to_fetchers()) == len(WATCHLIST)
