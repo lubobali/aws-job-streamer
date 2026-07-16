@@ -141,11 +141,17 @@ class TestUsEligibleDrops:
             "São Paulo",
             "Taiwan",
             "London, Stockholm",
+            "Stockholm, London",  # the exact string Lever emits for Spotify's Analytics Engineer II
             "Singapore, Seoul",
         ],
     )
     def test_bare_foreign_cities_are_dropped(self, location: str) -> None:
-        """Half the foreign postings name no country at all — just the city."""
+        """Half the foreign postings name no country at all — just the city.
+
+        "Stockholm, London" is the real Spotify posting Lubo caught in the throwaway test digest:
+        two bare foreign cities, no country. The shipped pipeline's prefilter drops it; that manual
+        digest simply did not route through the prefilter.
+        """
         assert is_us_eligible(location) is False
 
 
