@@ -144,6 +144,22 @@ def _is_rare_travel_hybrid(workplace: Workplace, office_days_per_month: int | No
     return office_days_per_month <= MAX_RARE_TRAVEL_DAYS_PER_MONTH
 
 
+def mentions_target_metro(text: str | None) -> bool:
+    """Report whether `text` names somewhere in his target metro (Sarasota / Tampa Bay).
+
+    The digest uses this to flag a company that sits in his target area even when the role is
+    remote — a remote job at a Tampa company is worth surfacing.
+
+    >>> mentions_target_metro("Remote only; company in Tampa")
+    True
+    >>> mentions_target_metro("Chicago, IL")
+    False
+    >>> mentions_target_metro(None)
+    False
+    """
+    return bool(text) and bool(_TARGET_METRO.search(text))
+
+
 def rank_by_location(jobs: Sequence[Job]) -> list[Job]:
     """Return every job, best-fitting location first. Stable within a tier.
 

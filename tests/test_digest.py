@@ -119,6 +119,40 @@ class TestRenderHtml:
 
         assert "Tampa" in html
 
+    def test_a_remote_job_hides_the_noisy_raw_location(self) -> None:
+        """The clean tier label replaces multi-clause junk."""
+        html = render_html(
+            [
+                a_ranked(
+                    tier=Tier.REMOTE_US,
+                    location="Remote only (hires in FL, TX, VA); Visa not available",
+                )
+            ]
+        )
+
+        assert "Remote (US)" in html
+        assert "hires in FL" not in html
+        assert "Visa not available" not in html
+
+    def test_flags_a_remote_job_at_a_target_metro_company(self) -> None:
+        """The one signal worth rescuing from the noise: a Tampa-based company."""
+        html = render_html(
+            [a_ranked(tier=Tier.REMOTE_US, location="Remote only; company in Tampa")]
+        )
+
+        assert "Tampa/Sarasota area" in html
+
+    def test_an_other_us_job_keeps_its_city(self) -> None:
+        """ "US" alone is too vague — an Austin job should say Austin."""
+        html = render_html([a_ranked(tier=Tier.OTHER_US, location="Austin, TX", remote=False)])
+
+        assert "Austin" in html
+
+    def test_a_target_metro_tier_is_not_double_flagged(self) -> None:
+        html = render_html([a_ranked(tier=Tier.TARGET_METRO_ONSITE, location="Sarasota, FL")])
+
+        assert "Tampa/Sarasota area" not in html  # the tier label already says it
+
 
 class TestRenderHtmlIsSafe:
     """Job fields come from untrusted job descriptions."""

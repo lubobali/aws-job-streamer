@@ -20,7 +20,13 @@ from datetime import UTC, datetime
 
 import pytest
 
-from aws_job_streamer.location_rank import Tier, Workplace, location_tier, rank_by_location
+from aws_job_streamer.location_rank import (
+    Tier,
+    Workplace,
+    location_tier,
+    mentions_target_metro,
+    rank_by_location,
+)
 from aws_job_streamer.models import Job
 
 
@@ -130,6 +136,24 @@ class TestOtherUs:
 
     def test_adzunas_county_format_still_finds_chicago(self) -> None:
         assert location_tier(a_job("Chicago, Cook County")) is Tier.CURRENT_BASE
+
+
+class TestMentionsTargetMetro:
+    """Used by the digest to flag a company sitting in his target area, even for a remote role."""
+
+    @pytest.mark.parametrize(
+        "text",
+        ["company in Tampa", "Sarasota, FL", "Venice", "St. Petersburg", "Bradenton, Florida"],
+    )
+    def test_detects_the_target_metro(self, text: str) -> None:
+        assert mentions_target_metro(text) is True
+
+    @pytest.mark.parametrize("text", ["Chicago, IL", "Austin, TX", "Remote (US)", "", "London, UK"])
+    def test_ignores_everywhere_else(self, text: str) -> None:
+        assert mentions_target_metro(text) is False
+
+    def test_handles_none(self) -> None:
+        assert mentions_target_metro(None) is False
 
 
 class TestRankByLocation:

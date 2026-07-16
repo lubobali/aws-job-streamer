@@ -23,6 +23,7 @@ duplicate email is recoverable; a lost job is not.
 from __future__ import annotations
 
 import html
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, Protocol
@@ -31,7 +32,7 @@ from urllib.parse import urlparse
 import boto3
 
 from aws_job_streamer.fit import RankedJob
-from aws_job_streamer.location_rank import Tier
+from aws_job_streamer.location_rank import Tier, mentions_target_metro
 
 # Human-readable location label per tier, for the digest.
 _TIER_LABEL = {
@@ -160,13 +161,51 @@ def _score_badge(score: int) -> str:
     )
 
 
+_TARGET_TIERS = (Tier.TARGET_METRO_HYBRID, Tier.TARGET_METRO_ONSITE)
+
+
 def _location_line(r: RankedJob) -> str:
-    """A short location string: the tier label, plus the raw location when it adds detail."""
-    label = _TIER_LABEL[r.location_tier]
-    raw = r.scored.job.location
-    if raw and raw not in label and label not in raw:
-        return f"{label} — {raw}"
-    return label
+    """A short, clean location string.
+
+    The tier label already encodes the arrangement cleanly ("Remote (US)", "Chicago") — so the
+    raw location string, which is often multi-clause noise ("Remote only (hires in FL, TX...);
+    company in Tampa; Visa not available"), is dropped. The one exception is OTHER_US, whose "US"
+    label is too vague, so the actual city is kept (cleaned).
+
+    A company sitting in his target metro is surfaced as a flag even for a remote role — a remote
+    job at a Tampa company is worth a second look. On a target-metro tier the flag would be
+    redundant, so it is only added elsewhere.
+
+    >>> from aws_job_streamer.location_rank import Tier
+    """
+    tier = r.location_tier
+    raw = r.scored.job.location or ""
+
+    # The tier label is clean and complete for every tier except OTHER_US, whose "US" is too
+    # vague — there, keep the actual city.
+    base = _TIER_LABEL[tier]
+    if tier is Tier.OTHER_US:
+        base = _clean_location(raw) or base
+
+    if tier not in _TARGET_TIERS and mentions_target_metro(raw):
+        base = f"{base} · Tampa/Sarasota area"
+    return base
+
+
+def _clean_location(raw: str) -> str:
+    """Reduce a noisy raw location to its useful head: drop parenthetical asides and trailing
+    clauses.
+
+    >>> _clean_location("Seattle, WA or Remote USA")
+    'Seattle, WA or Remote USA'
+    >>> _clean_location("Chicago, IL or Peoria, IL (office-based, NOT remote)")
+    'Chicago, IL or Peoria, IL'
+    >>> _clean_location("(not stated)")
+    ''
+    """
+    without_parens = re.sub(r"\([^)]*\)", "", raw)
+    head = without_parens.split(";")[0].split(" — ")[0]
+    return head.strip().strip(",").strip()
 
 
 def _salary_text(salary: str, estimated: bool) -> str:
