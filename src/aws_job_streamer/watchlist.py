@@ -37,8 +37,14 @@ class Board:
     company: str
 
     def to_fetcher(self) -> Fetcher:
-        """Bind this board to a no-argument callable the pipeline can fetch."""
+        """Bind this board to a no-argument callable the pipeline can fetch.
+
+        Greenhouse's board API already carries the employer name, so its `fetch_jobs` takes no
+        `company` argument; Lever and Ashby do not name the company, so it is passed to them.
+        """
         fetch = _FETCHERS[self.source]
+        if self.source == "greenhouse":
+            return partial(fetch, self.slug)
         return partial(fetch, self.slug, company=self.company)
 
 
