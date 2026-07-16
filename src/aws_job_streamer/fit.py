@@ -47,6 +47,10 @@ _FLAG_REASONS = {
     "azure_mandatory": "Azure is a mandatory requirement",
 }
 
+# The one work_authorization value that skips: a requirement he cannot satisfy. "us_ok",
+# "us_citizen_or_clearance" (his moat) and "unknown" are all kept — see _skip_reason.
+_FOREIGN_AUTHORIZATION = "foreign_required"
+
 
 class Status(Enum):
     """Whether a job reaches the digest."""
@@ -126,13 +130,19 @@ def _to_workplace(value: str | None) -> Workplace:
 def _skip_reason(scored: ScoredJob, *, profile: dict[str, Any]) -> str | None:
     """Return why this job is skipped, or None to keep it.
 
-    The years check is arithmetic and lives here. The Azure and discipline checks are semantic,
-    so they honour the LLM's flags — but only those two known flags, so a novel flag can never
-    silently drop a job.
+    The years and work-authorization checks are decisions in Python off a reported fact. The Azure
+    flag is a semantic judgement, so it honours the LLM's flag — but only the one known flag, so a
+    novel flag can never silently drop a job.
     """
     wall = profile.get("skip_flags", {}).get("years_required_above", _DEFAULT_YEARS_WALL)
     if scored.years_required is not None and scored.years_required >= wall:
         return f"requires {scored.years_required}+ years (his wall is {wall})"
+
+    # Skip ONLY on an authorization he cannot satisfy — not on a foreign location. A foreign OFFICE
+    # open to a remote US worker is fine; "must be authorized to work in the UK" is not. US
+    # citizenship / clearance is his moat and reads as us_citizen_or_clearance, which is kept.
+    if scored.work_authorization == _FOREIGN_AUTHORIZATION:
+        return "requires work authorization he does not have (non-US citizenship/visa)"
 
     for flag in scored.skip_flags:
         if flag in _FLAG_REASONS:

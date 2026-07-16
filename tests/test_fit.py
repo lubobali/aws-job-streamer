@@ -31,6 +31,7 @@ def a_scored(  # noqa: PLR0913 — a builder; every field is an independent knob
     workplace: str | None = "remote",
     office_days_per_month: int | None = None,
     years_required: int | None = None,
+    work_authorization: str | None = None,
     skip_flags: tuple[str, ...] = (),
     source_id: str = "1",
     posted_at: datetime | None = None,
@@ -54,6 +55,7 @@ def a_scored(  # noqa: PLR0913 — a builder; every field is an independent knob
         workplace=workplace,
         office_days_per_month=office_days_per_month,
         years_required=years_required,
+        work_authorization=work_authorization,
     )
 
 
@@ -107,10 +109,44 @@ class TestSkipFlags:
         assert rank_one(a_scored(), profile=PROFILE).status is Status.RANKED
 
     def test_an_unrecognised_flag_does_not_skip(self) -> None:
-        """Only the three known killers skip; a stray flag must not silently drop a job."""
+        """Only the known killers skip; a stray flag must not silently drop a job."""
         assert rank_one(a_scored(skip_flags=("something_new",)), profile=PROFILE).status is (
             Status.RANKED
         )
+
+
+class TestSkipWorkAuthorization:
+    """Skip a job ONLY when it requires an authorization he cannot satisfy — the residual foreign
+    role the geography prefilter let through (e.g. a bare "Remote" post whose body says "must be
+    authorized to work in the UK"). Foreign LOCATION never skips here; the requirement does. And
+    US citizenship / clearance is his MOAT — those roles must stay ranked, never skipped.
+    """
+
+    def test_foreign_authorization_requirement_is_skipped(self) -> None:
+        result = rank_one(a_scored(work_authorization="foreign_required"), profile=PROFILE)
+
+        assert result.status is Status.SKIPPED
+        assert "authoriz" in (result.skip_reason or "").lower()
+
+    def test_us_ok_is_not_skipped(self) -> None:
+        assert rank_one(a_scored(work_authorization="us_ok"), profile=PROFILE).status is (
+            Status.RANKED
+        )
+
+    def test_us_citizen_or_clearance_is_never_skipped(self) -> None:
+        """His moat, not a barrier: he is a US citizen and clearance-eligible."""
+        result = rank_one(a_scored(work_authorization="us_citizen_or_clearance"), profile=PROFILE)
+
+        assert result.status is Status.RANKED
+
+    def test_unknown_authorization_is_not_skipped(self) -> None:
+        """Unknown means keep — the same asymmetry as the geography prefilter."""
+        assert rank_one(a_scored(work_authorization="unknown"), profile=PROFILE).status is (
+            Status.RANKED
+        )
+
+    def test_missing_authorization_is_not_skipped(self) -> None:
+        assert rank_one(a_scored(work_authorization=None), profile=PROFILE).status is Status.RANKED
 
 
 class TestLocationTierUsesExtractedFacts:

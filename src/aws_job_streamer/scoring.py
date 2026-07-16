@@ -62,6 +62,13 @@ class ScoredJob:
     workplace: str | None = None
     office_days_per_month: int | None = None
     years_required: int | None = None
+    work_authorization: str | None = None
+    """What the posting REQUIRES (us_ok | us_citizen_or_clearance | foreign_required | unknown).
+
+    A fact, not a verdict: `fit.py` decides eligibility. It exists to catch the residual foreign
+    role the geography prefilter cannot — a bare "Remote" posting whose body demands the right to
+    work in another country. US citizenship / clearance is his moat, never a barrier.
+    """
 
 
 def build_prompt(job: Job, *, profile: dict[str, Any]) -> str:
@@ -112,8 +119,21 @@ Reply with ONLY a JSON object, no markdown fences, no prose:
   "skip_flags": [<any of: "azure_mandatory", "years_far_above", "wrong_discipline">],
   "workplace": "<remote|hybrid|onsite|unknown>",
   "office_days_per_month": <number if the posting states one, else null>,
-  "years_required": <minimum years the posting requires, else null>
+  "years_required": <minimum years the posting requires, else null>,
+  "work_authorization": "<us_ok|us_citizen_or_clearance|foreign_required|unknown>"
 }}
+
+Report `work_authorization` as a FACT about what the posting REQUIRES — do NOT decide whether the
+candidate qualifies (Python does that):
+  - "us_ok" — a US-based role, or one that only needs authorization to work in the US.
+  - "us_citizen_or_clearance" — requires US citizenship or a US security clearance.
+  - "foreign_required" — requires the right to work in a NON-US country ("must be authorized to
+    work in Canada / the UK / the EU", a role on foreign payroll under local employment law).
+  - "unknown" — the posting does not say.
+This candidate is a US citizen and clearance-eligible, so "us_citizen_or_clearance" is an
+ADVANTAGE for him, never a negative — do not lower the score for a citizenship or clearance
+requirement. Do not confuse a foreign OFFICE with a foreign authorization requirement: a role open
+to a remote US worker is "us_ok" even if the company is abroad.
 
 Scoring guidance — these are calibrated against {calibrated_on} jobs this candidate actually
 applied to, so follow them over your own instincts:
@@ -134,6 +154,17 @@ applied to, so follow them over your own instincts:
 - **A missing PREFERRED skill is minor** — he applied to roles wanting Ruby, Flutter and an
   all-GCP stack he has never used. A different cloud or one unfamiliar language is not
   disqualifying. A missing hard REQUIREMENT (e.g. "5+ years of Java" when he has none) is major.
+
+- **ML/AI PLATFORM and PRODUCTION engineering is his lane; pure ML RESEARCH is not — and most
+  roles titled "ML Engineer" are the former.** Building, shipping and productionizing ML systems,
+  ML infrastructure and platforms, feature stores, data/feature pipelines, model serving,
+  evaluation harnesses, metrics dashboards, monitoring and on-call are engineering he does — score
+  these as a genuine match even when they list TensorFlow/PyTorch or mention causal ML as a
+  "nice to have". Treat it as a real discipline gap ONLY when the CORE deliverable is novel model
+  research: inventing architectures, deep causal-inference research, training foundation models
+  from scratch. Even then, express the gap as a LOWER SCORE, not a "wrong_discipline" skip — a
+  coarse low score lets him overrule it by looking, a skip hides it (this is why 4C stayed in).
+  Never write that he would be "screened out" or should not apply; that is his decision, not yours.
 
 - **Salary must not affect the score at all.** His real targets span $80k to $300k.
 
@@ -258,4 +289,5 @@ def _to_scored_job(job: Job, data: dict[str, Any]) -> ScoredJob:
         workplace=data.get("workplace"),
         office_days_per_month=data.get("office_days_per_month"),
         years_required=data.get("years_required"),
+        work_authorization=data.get("work_authorization"),
     )

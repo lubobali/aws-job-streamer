@@ -94,6 +94,24 @@ class TestBuildPrompt:
         building = prompt.index("Terraform")
         assert have != building  # both present, in different sections
 
+    def test_asks_for_a_work_authorization_fact(self) -> None:
+        """Phase 2 must report what authorization the posting requires, so Python can skip only
+        the ones he cannot satisfy — the residual foreign role the prefilter let through."""
+        prompt = build_prompt(a_job(), profile=PROFILE)
+
+        assert "work_authorization" in prompt
+        assert "foreign_required" in prompt
+        # US citizenship / clearance is his moat — the prompt must protect it from being penalised.
+        assert "us_citizen_or_clearance" in prompt
+
+    def test_names_ml_production_engineering_as_in_lane(self) -> None:
+        """The scorer must not write off ML-production/platform roles as 'wrong discipline' — that
+        is the gatekeeping Lubo removed (it hid the 4C role). Only pure research is a real gap."""
+        prompt = build_prompt(a_job(), profile=PROFILE).lower()
+
+        assert "research" in prompt  # it must draw the production-vs-research line
+        assert "screened out" in prompt or "screen him out" in prompt  # forbids the defeatist read
+
 
 class TestPromptInjectionDefence:
     """A job description is data to judge, never instructions to obey.
@@ -192,6 +210,27 @@ class TestScorer:
         assert result.workplace == "hybrid"
         assert result.office_days_per_month == 2
         assert result.years_required == 6
+
+    def test_extracts_work_authorization(self, respx_mock: respx.MockRouter) -> None:
+        """The authorization fact drives the foreign-role skip in fit.py."""
+        respx_mock.post(url__startswith="https://openrouter.ai").mock(
+            return_value=openrouter_reply(a_reply(work_authorization="foreign_required"))
+        )
+
+        result = Scorer(api_key="k", profile=PROFILE).score(a_job())
+
+        assert result.work_authorization == "foreign_required"
+
+    def test_work_authorization_is_none_when_the_model_omits_it(
+        self, respx_mock: respx.MockRouter
+    ) -> None:
+        """An older-shaped reply with no authorization field must not crash — it just means keep."""
+        reply = json.dumps({"score": 80, "reason": "ok", "workplace": "remote"})
+        respx_mock.post(url__startswith="https://openrouter.ai").mock(
+            return_value=openrouter_reply(reply)
+        )
+
+        assert Scorer(api_key="k", profile=PROFILE).score(a_job()).work_authorization is None
 
     def test_sends_the_configured_model(self, respx_mock: respx.MockRouter) -> None:
         route = respx_mock.post(url__startswith="https://openrouter.ai").mock(
