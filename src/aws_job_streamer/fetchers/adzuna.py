@@ -23,10 +23,12 @@ Everything below was measured against the live API:
 from __future__ import annotations
 
 import os
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 import httpx
 
@@ -36,6 +38,8 @@ from aws_job_streamer.models import Job
 
 SOURCE = "adzuna"
 SEARCH_URL = "https://api.adzuna.com/v1/api/jobs/us/search/{page}"
+
+_LAND_AD_PATH = re.compile(r"^/land/ad/(\d+)")
 
 _PAGE_SIZE = 50
 """Hard cap. results_per_page=100 silently returns 50 — asking for more is a lie, not an error."""
@@ -179,10 +183,9 @@ def _parse_result(raw: dict[str, Any], *, fetched_at: datetime) -> Job:
         source_id=str(raw["id"]),
         company=(raw.get("company") or {}).get("display_name") or "",
         title=raw["title"],
-        # Stored whole. Decision Log #1 CORRECTION: stripping the query returns 403 (the utm_*
-        # params are required to resolve) and gains nothing — the url carries app_id, which
-        # Adzuna publishes by design, never app_key.
-        url=raw["redirect_url"],
+        # Normalized to the shape that opens. Decision Log #12: Adzuna's /land/ad/{id} redirect
+        # 403s (Cloudflare bot-block), but its /details/{id} twin for the same id returns 200.
+        url=_normalise_apply_url(raw["redirect_url"]),
         location=location,
         remote=_is_remote(raw["title"], location, description),
         salary=salary,
@@ -191,6 +194,33 @@ def _parse_result(raw: dict[str, Any], *, fetched_at: datetime) -> Job:
         posted_at=_parse_created(raw.get("created")),
         fetched_at=fetched_at,
     )
+
+
+def _normalise_apply_url(url: str) -> str:
+    """Return an Adzuna apply url in the shape that actually opens.
+
+    Adzuna hands back two url shapes for the same posting. `/details/{id}` returns HTTP 200;
+    `/land/ad/{id}?se=...` returns 403 (Cloudflare bot-block) even with a browser User-Agent, so a
+    digest built from the raw url ships dead links. Both carry the same numeric id, so a
+    `/land/ad/` url is rewritten to its `/details/` twin. The `utm_*` params are kept — the
+    stripped url also 403s — while the per-fetch `se=`/`v=` land-tokens are dropped. Any other
+    shape is returned unchanged.
+
+    >>> _normalise_apply_url("https://www.adzuna.com/details/123?utm_medium=api&utm_source=abc")
+    'https://www.adzuna.com/details/123?utm_medium=api&utm_source=abc'
+    >>> _normalise_apply_url("https://www.adzuna.com/land/ad/123?se=TOKEN&utm_medium=api&utm_source=abc&v=X")
+    'https://www.adzuna.com/details/123?utm_medium=api&utm_source=abc'
+    >>> _normalise_apply_url("https://example.com/whatever")
+    'https://example.com/whatever'
+    """
+    parsed = urlparse(url)
+    match = _LAND_AD_PATH.match(parsed.path)
+    if not match:
+        return url
+
+    job_id = match.group(1)
+    utm = urlencode([(k, v) for k, v in parse_qsl(parsed.query) if k.startswith("utm_")])
+    return urlunparse((parsed.scheme, parsed.netloc, f"/details/{job_id}", "", utm, ""))
 
 
 def _salary(raw: dict[str, Any]) -> tuple[str | None, bool]:

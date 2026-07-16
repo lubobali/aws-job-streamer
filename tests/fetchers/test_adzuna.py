@@ -120,21 +120,32 @@ class TestSalary:
 
 
 class TestUrl:
-    """Decision Log #1 CORRECTION: store redirect_url as-is; do NOT strip the query.
+    """Normalize the apply URL to the shape that actually opens.
 
-    Measured: the full url returns 200 and the stripped url returns 403 even with a browser
-    User-Agent — the utm_* params are required to resolve. And the url carries app_id (public,
-    Adzuna's own attribution) but never app_key (0/50 live results). Stripping would gain no
-    security and hand Lubo a digest of dead links.
+    Decision Log #12, measured live: Adzuna returns two url shapes for the same job. The
+    `/details/{id}` shape returns HTTP 200; the `/land/ad/{id}?se=...` shape returns 403
+    (Cloudflare bot-block) even with a browser User-Agent. Both carry the same numeric id, so a
+    `/land/ad/` url is rewritten to the working `/details/` url — otherwise the digest ships dead
+    links. The utm_* params are kept (the stripped url also 403s); the per-fetch `se=`/`v=`
+    land-tokens are dropped. The url carries app_id (public, Adzuna's own attribution) but never
+    app_key.
     """
 
-    def test_keeps_the_full_url_including_query(self, jobs: list[Any]) -> None:
-        assert jobs[DETAILS_URL].url.startswith("https://www.adzuna.com/details/5801171816?")
+    def test_keeps_a_working_details_url_as_is(self, jobs: list[Any]) -> None:
+        assert jobs[DETAILS_URL].url.startswith("https://www.adzuna.com/details/5801171816")
         assert "utm_medium=api" in jobs[DETAILS_URL].url
 
-    def test_keeps_the_volatile_se_token_url_shape_too(self, jobs: list[Any]) -> None:
-        """The se= token changes per fetch, but job_id keys on source_id so it cannot hurt us."""
-        assert "se=" in jobs[LAND_AD_URL].url
+    def test_rewrites_the_blocked_land_ad_shape_to_details(self, jobs: list[Any]) -> None:
+        """The /land/ad/ shape 403s; rewrite it to the /details/ twin, which opens."""
+        url = jobs[LAND_AD_URL].url
+
+        assert url.startswith("https://www.adzuna.com/details/5801264268")
+        assert "/land/ad/" not in url
+        assert "se=" not in url  # the token that 403s and changes per fetch is gone
+
+    def test_a_rewritten_url_keeps_the_utm_attribution(self, jobs: list[Any]) -> None:
+        """utm_* is required for the /details/ url to resolve; keep it."""
+        assert "utm_medium=api" in jobs[LAND_AD_URL].url
 
     def test_job_id_ignores_the_volatile_url(self, payload: dict[str, Any]) -> None:
         first = adzuna.parse_search(payload, fetched_at=FETCHED_AT)
