@@ -14,7 +14,10 @@ import pytest
 from moto import mock_aws
 
 from aws_job_streamer.dedup import JobStore
+from aws_job_streamer.fit import RankedJob, Status
+from aws_job_streamer.location_rank import Tier
 from aws_job_streamer.models import Job
+from aws_job_streamer.scoring import ScoredJob
 
 TABLE = "test-jobs"
 REGION = "us-east-2"
@@ -163,3 +166,78 @@ class TestBatchLimits:
         fresh = store.new_jobs_only(mixed)
 
         assert [j.source_id for j in fresh] == [str(n) for n in range(150, 160)]
+
+
+def a_ranked(  # noqa: PLR0913 — a builder; every field is an independent knob a test may set
+    source_id: str = "1",
+    *,
+    score: int = 80,
+    reason: str = "good fit",
+    status: Status = Status.RANKED,
+    skip_reason: str | None = None,
+    tier: Tier = Tier.REMOTE_US,
+) -> RankedJob:
+    scored = ScoredJob(job=a_job(source_id), score=score, reason=reason)
+    return RankedJob(scored=scored, location_tier=tier, status=status, skip_reason=skip_reason)
+
+
+def stored(store: JobStore, source_id: str = "1") -> dict[str, object]:
+    """Fetch a record and assert it exists, so tests can subscript it without a None guard."""
+    item = store.get(a_job(source_id).job_id)
+    assert item is not None
+    return item
+
+
+class TestSaveNew:
+    """Persisting the scored verdict — what the digest reads and what stops a re-score.
+
+    A job is written only once it has a score, so "in the store" means "scored", and a job that
+    failed scoring is simply not stored and gets retried next run rather than silently lost.
+    """
+
+    def test_stores_the_score_and_reason(self, store: JobStore) -> None:
+        store.save_new([a_ranked("1", score=92, reason="excellent match")])
+
+        item = stored(store)
+
+        assert item["fit_score"] == 92
+        assert item["fit_reason"] == "excellent match"
+
+    def test_a_ranked_job_is_status_new(self, store: JobStore) -> None:
+        """new = scored and ready to email; Phase 3 flips it to emailed."""
+        store.save_new([a_ranked("1", status=Status.RANKED)])
+
+        assert stored(store)["status"] == "new"
+
+    def test_a_skipped_job_is_stored_as_skipped(self, store: JobStore) -> None:
+        """Skipped jobs are stored so they are not re-scored — but marked, so the digest omits
+        them and they stay auditable."""
+        store.save_new([a_ranked("1", status=Status.SKIPPED, skip_reason="requires 10+ years")])
+
+        item = stored(store)
+
+        assert item["status"] == "skipped"
+        assert item["skip_reason"] == "requires 10+ years"
+
+    def test_stores_the_location_tier_for_the_digest_ordering(self, store: JobStore) -> None:
+        store.save_new([a_ranked("1", tier=Tier.TARGET_METRO_HYBRID)])
+
+        assert stored(store)["location_tier"] == Tier.TARGET_METRO_HYBRID.value
+
+    def test_a_saved_job_is_no_longer_new(self, store: JobStore) -> None:
+        """The point: saving a scored job closes the dedup gate for it."""
+        store.save_new([a_ranked("1")])
+
+        assert store.new_jobs_only([a_job("1")]) == []
+
+    def test_saving_nothing_is_not_an_error(self, store: JobStore) -> None:
+        store.save_new([])
+
+        assert store.get("nonexistent") is None
+
+    def test_writes_more_than_one_batch_of_25(self, store: JobStore) -> None:
+        ranked = [a_ranked(str(n)) for n in range(60)]
+
+        store.save_new(ranked)
+
+        assert store.new_jobs_only([a_job(str(n)) for n in range(60)]) == []

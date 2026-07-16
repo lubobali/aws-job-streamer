@@ -16,6 +16,7 @@ from typing import Any
 
 import boto3
 
+from aws_job_streamer.fit import RankedJob, Status
 from aws_job_streamer.models import Job
 
 _BATCH_GET_LIMIT = 100
@@ -98,6 +99,25 @@ class JobStore:
             for item in items:
                 batch.put_item(Item=item)
 
+    def save_new(self, ranked: Iterable[RankedJob]) -> None:
+        """Persist scored jobs and their verdict — the record the digest reads.
+
+        A job is written only once it has a score, so "present in the store" means "scored", and
+        the dedup gate closes for it. A job that failed scoring is never passed here, so it stays
+        out of the store and is retried on the next run rather than silently lost.
+
+        Skipped jobs are stored too (marked skipped) so they are not re-scored — paying the LLM
+        twice to re-learn a job needs 10 years is waste. Idempotent, like mark_seen.
+        """
+        items = [_to_scored_item(r) for r in ranked]
+        if not items:
+            return
+
+        table = self._table
+        with table.batch_writer(overwrite_by_pkeys=["job_id"]) as batch:
+            for item in items:
+                batch.put_item(Item=item)
+
     def get(self, job_id: str) -> dict[str, Any] | None:
         """Return the stored record for `job_id`, or None."""
         return self._table.get_item(Key={"job_id": job_id}).get("Item")
@@ -139,3 +159,23 @@ def _to_item(job: Job) -> dict[str, Any]:
     if job.posted_at:
         item["posted_at"] = job.posted_at.isoformat()
     return {k: v for k, v in item.items() if v is not None}
+
+
+# Maps fit.Status onto the DynamoDB status field. "new" = scored, ready to email (Phase 3 flips
+# it to "emailed"); "skipped" = scored but excluded by a fit rule, kept only so it is not
+# re-scored. The other PLAN.md states — emailed, applied — are set by later phases.
+_DIGEST_STATUS = {Status.RANKED: "new", Status.SKIPPED: "skipped"}
+
+
+def _to_scored_item(ranked: RankedJob) -> dict[str, Any]:
+    """Render a scored job as a DynamoDB item, extending the bare job record with the verdict."""
+    item = _to_item(ranked.scored.job)
+    item["status"] = _DIGEST_STATUS[ranked.status]
+    item["fit_score"] = ranked.scored.score
+    item["fit_reason"] = ranked.scored.reason
+    item["location_tier"] = ranked.location_tier.value
+    if ranked.scored.skip_flags:
+        item["skip_flags"] = list(ranked.scored.skip_flags)
+    if ranked.skip_reason:
+        item["skip_reason"] = ranked.skip_reason
+    return item
