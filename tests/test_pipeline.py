@@ -110,7 +110,7 @@ def run(
 
 class TestHappyPath:
     def test_scores_ranks_and_returns_a_digest(self) -> None:
-        scorer = FakeScorer(scores={"a": 90, "b": 60})
+        scorer = FakeScorer(scores={"a": 90, "b": 70})  # both above the 65 digest floor
         result = run([source(a_job("a"), a_job("b"))], scorer=scorer)
 
         assert [r.scored.job.source_id for r in result.digest] == ["a", "b"]
@@ -121,6 +121,28 @@ class TestHappyPath:
         run([source(a_job("a"), a_job("b"))], store=store)
 
         assert {r.scored.job.source_id for r in store.saved} == {"a", "b"}
+
+    def test_a_below_floor_job_is_scored_and_stored_but_not_emailed(self) -> None:
+        """The floor keeps a weak match out of the inbox without losing it from the record."""
+        store = FakeStore()
+        scorer = FakeScorer(scores={"weak": 50})
+        result = run([source(a_job("weak"))], store=store, scorer=scorer)
+
+        assert result.digest == []  # not emailed
+        assert {r.scored.job.source_id for r in store.saved} == {"weak"}  # but persisted
+        assert result.counts.scored == 1
+
+    def test_the_floor_can_be_overridden(self) -> None:
+        scorer = FakeScorer(scores={"mid": 70})
+        result = run_pipeline(
+            [source(a_job("mid"))],
+            store=FakeStore(),
+            scorer=scorer,
+            profile=PROFILE,
+            min_score=80,
+        )
+
+        assert result.digest == []
 
     def test_combines_multiple_sources(self) -> None:
         result = run([source(a_job("a")), source(a_job("b")), source(a_job("c"))])

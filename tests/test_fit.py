@@ -277,3 +277,35 @@ class TestForDigest:
         jobs = [a_scored(years_required=10, source_id=str(i)) for i in range(3)]
 
         assert for_digest(rank(jobs, profile=PROFILE)) == []
+
+
+class TestDigestScoreFloor:
+    """The digest emails only genuinely-strong matches. A weak-but-ranked job stays in the full
+    ranking (inspectable), but never lands in Lubo's inbox — "nothing great today" beats five
+    mediocre ones. The floor is 65 by default.
+    """
+
+    def test_a_job_below_the_floor_is_not_emailed(self) -> None:
+        digest = for_digest(rank([a_scored(score=64)], profile=PROFILE))
+
+        assert digest == []
+
+    def test_a_job_at_the_floor_is_emailed(self) -> None:
+        digest = for_digest(rank([a_scored(score=65)], profile=PROFILE))
+
+        assert len(digest) == 1
+
+    def test_the_floor_is_configurable(self) -> None:
+        jobs = [a_scored(score=70, source_id="a"), a_scored(score=80, source_id="b")]
+
+        digest = for_digest(rank(jobs, profile=PROFILE), min_score=75)
+
+        assert [r.scored.job.source_id for r in digest] == ["b"]
+
+    def test_a_weak_job_stays_in_the_full_ranking_even_when_floored_out(self) -> None:
+        """Floored from the email, NOT dropped from the ranking — the anti-silent-drop rule."""
+        ranked = rank([a_scored(score=40)], profile=PROFILE)
+
+        assert len(ranked) == 1
+        assert ranked[0].status is Status.RANKED
+        assert for_digest(ranked) == []

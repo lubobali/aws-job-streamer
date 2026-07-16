@@ -76,15 +76,19 @@ class PipelineResult:
     counts: PipelineCounts
 
 
-def run_pipeline(
+def run_pipeline(  # noqa: PLR0913 — each arg is an injected seam or a real tuning knob
     sources: Sequence[Fetcher],
     *,
     store: Store,
     scorer: Scorer,
     profile: dict[str, Any],
     digest_limit: int = _DEFAULT_DIGEST_LIMIT,
+    min_score: int | None = None,
 ) -> PipelineResult:
     """Run one full cycle and return the ranked digest.
+
+    `min_score` is the digest floor; None uses `for_digest`'s default (65) so `fit` stays the one
+    source of truth. Below-floor matches remain in `ranked`, just not in `digest`.
 
     Side effect: scored jobs (ranked and skipped) are written to the store, which closes the
     dedup gate for them. Nothing is emailed here — that is Phase 3's job on the returned digest.
@@ -98,7 +102,8 @@ def run_pipeline(
     ranked = rank(scored, profile=profile)
     store.save_new(ranked)
 
-    digest = for_digest(ranked, limit=digest_limit)
+    floor = {} if min_score is None else {"min_score": min_score}
+    digest = for_digest(ranked, limit=digest_limit, **floor)
     counts = PipelineCounts(
         fetched=len(fetched),
         eligible=len(eligible),

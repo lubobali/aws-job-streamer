@@ -35,6 +35,10 @@ from aws_job_streamer.scoring import ScoredJob
 
 _DEFAULT_YEARS_WALL = 8
 _DEFAULT_DIGEST_LIMIT = 10
+_DEFAULT_MIN_SCORE = 65
+"""The digest floor: below this, a match is real but not strong enough to email. It stays in the
+full ranking (inspectable) but is kept out of the inbox — an honest short digest beats a padded
+one. Calibrated against the gold set, where genuine targets score 72-92 and stretches sit lower."""
 
 # The only flag that hard-skips. Deliberately NOT "wrong_discipline": discipline is exactly what
 # the score already measures (a wrong-discipline job scores near zero and sinks off the top-N on
@@ -88,14 +92,19 @@ def rank(scored_jobs: Sequence[ScoredJob], *, profile: dict[str, Any]) -> list[R
 
 
 def for_digest(
-    ranked: Sequence[RankedJob], *, limit: int = _DEFAULT_DIGEST_LIMIT
+    ranked: Sequence[RankedJob],
+    *,
+    limit: int = _DEFAULT_DIGEST_LIMIT,
+    min_score: int = _DEFAULT_MIN_SCORE,
 ) -> list[RankedJob]:
-    """Return the top `limit` RANKED jobs — what actually goes in the email.
+    """Return the top `limit` RANKED jobs scoring at least `min_score` — what goes in the email.
 
-    Skipped jobs are excluded here, not in `rank()`, so the full ranking (including skips) stays
-    inspectable. This is an explicit filter, never a silent drop.
+    Two explicit filters, never silent drops: skipped jobs and below-floor jobs are excluded here,
+    not in `rank()`, so the full ranking (skips and weak matches alike) stays inspectable. The
+    floor keeps weak-but-real matches out of the inbox while leaving them in the record.
     """
-    return [r for r in ranked if r.status is Status.RANKED][:limit]
+    strong = [r for r in ranked if r.status is Status.RANKED and r.scored.score >= min_score]
+    return strong[:limit]
 
 
 def _location_tier(scored: ScoredJob) -> Tier:
