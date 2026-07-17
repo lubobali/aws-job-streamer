@@ -65,7 +65,7 @@ _CURRENT_BASE = re.compile(
     # ambiguous bare names (Aurora, Lake County) are left out to avoid matching other states.
     r"\b(?:Chicago|Chicagoland|Evanston|Oak Park|Naperville|Schaumburg|Lemont|Joliet|Elgin"
     r"|Cicero|Skokie|Arlington Heights|Des Plaines|Orland Park|Tinley Park|Bolingbrook"
-    r"|Downers Grove|Elmhurst|Lombard|Wheaton|Oak Brook|Hinsdale|Palatine"
+    r"|Downers Grove|Elmhurst|Lombard|Wheaton|Oak Brook|Hinsdale|Palatine|Buffalo Grove"
     r"|Cook County|DuPage County|Will County|McHenry County)\b",
     re.IGNORECASE,
 )

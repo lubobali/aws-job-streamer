@@ -122,6 +122,7 @@ class TestTier5ChicagoBridge:
             "Lemont, IL",  # Argonne National Laboratory — Chicago metro, ~25mi, commutable
             "Joliet, IL",
             "Schaumburg, IL",
+            "Buffalo Grove, IL",  # SPR AI Platform role interim site
             "DuPage County, IL",
         ],
     )
