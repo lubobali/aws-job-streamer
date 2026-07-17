@@ -10,9 +10,11 @@ exact same code path.
 from __future__ import annotations
 
 import json
+import logging
 import os
 from collections.abc import Sequence
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +23,72 @@ from aws_job_streamer.digest import DigestMailer, DigestResult, send_digest
 from aws_job_streamer.pipeline import PipelineResult, run_pipeline
 from aws_job_streamer.scoring import Scorer
 from aws_job_streamer.watchlist import Board, to_fetchers
+
+_log = logging.getLogger("aws_job_streamer")
+
+
+class RunHealth(Enum):
+    """How a run went. Logged at a matching level so a CloudWatch metric filter can alarm on it."""
+
+    OK = "ok"
+    WARN = "warn"
+    ERROR = "error"
+
+    @property
+    def log_level(self) -> int:
+        return {
+            RunHealth.OK: logging.INFO,
+            RunHealth.WARN: logging.WARNING,
+            RunHealth.ERROR: logging.ERROR,
+        }[self]
+
+
+@dataclass(frozen=True, slots=True)
+class RunSummary:
+    """The heartbeat: one structured line per run so silence never hides a failure.
+
+    Every scheduled run emits this. A dead pipeline (all sources failed, nothing fetched) logs
+    ERROR; a degraded one (some sources down, or zero jobs came back) logs WARN; a healthy run —
+    including the normal 'nothing new, cost nothing' run — logs INFO. The 'no runs at all' case
+    (a broken schedule) is caught by a CloudWatch alarm on the Lambda in Phase 4, not here.
+    """
+
+    health: RunHealth
+    headline: str
+    result: PipelineResult
+    emailed: int
+    message_id: str | None
+    source_count: int
+
+    def line(self) -> str:
+        c = self.result.counts
+        return (
+            f"job-streamer run health={self.health.value} ({self.headline}) | "
+            f"fetched={c.fetched} eligible={c.eligible} new={c.new} scored={c.scored} "
+            f"skipped={c.skipped} digest={c.digest} deferred={c.deferred} "
+            f"sources_failed={c.source_failures}/{self.source_count} "
+            f"emailed={self.emailed} msg={self.message_id or '-'}"
+        )
+
+
+def assess_run(
+    result: PipelineResult, *, source_count: int, digest_result: DigestResult | None
+) -> RunSummary:
+    """Classify a finished run's health. Pure — no logging, no I/O — so it is trivially testable."""
+    c = result.counts
+    emailed = digest_result.count if digest_result and digest_result.sent else 0
+    message_id = digest_result.message_id if digest_result else None
+
+    if source_count and c.source_failures >= source_count:
+        health, headline = RunHealth.ERROR, "all sources failed — fetched nothing"
+    elif c.source_failures > 0:
+        health, headline = RunHealth.WARN, f"{c.source_failures}/{source_count} sources failed"
+    elif c.fetched == 0:
+        health, headline = RunHealth.WARN, "0 jobs fetched with no failures — boards empty/changed?"
+    else:
+        health, headline = RunHealth.OK, "healthy"
+
+    return RunSummary(health, headline, result, emailed, message_id, source_count)
 
 
 def load_dotenv(path: str | Path = ".env") -> None:
@@ -115,11 +183,15 @@ def run(
         max_score_per_run=settings.max_score_per_run,
     )
 
-    if not send:
-        return result, None
+    digest_result: DigestResult | None = None
+    if send:
+        mailer = DigestMailer(
+            sender=settings.sender, recipient=settings.recipient, region=settings.region
+        )
+        digest_result = send_digest(result.digest, mailer=mailer, store=store)
 
-    mailer = DigestMailer(
-        sender=settings.sender, recipient=settings.recipient, region=settings.region
-    )
-    digest_result = send_digest(result.digest, mailer=mailer, store=store)
+    # Heartbeat: one structured line per run, at a level a CloudWatch alarm can watch (A3).
+    summary = assess_run(result, source_count=len(sources), digest_result=digest_result)
+    _log.log(summary.health.log_level, summary.line())
+
     return result, digest_result

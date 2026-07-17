@@ -4,12 +4,73 @@ covered by the components' own tests and the live end-to-end run."""
 from __future__ import annotations
 
 import json
+import logging
 import os
 from pathlib import Path
 
 import pytest
 
-from aws_job_streamer.runner import Settings, load_dotenv, load_profile
+from aws_job_streamer.digest import DigestResult
+from aws_job_streamer.pipeline import PipelineCounts, PipelineResult
+from aws_job_streamer.runner import (
+    RunHealth,
+    Settings,
+    assess_run,
+    load_dotenv,
+    load_profile,
+)
+
+
+def _result(**overrides: int) -> PipelineResult:
+    base = {
+        "fetched": 100,
+        "eligible": 80,
+        "new": 10,
+        "scored": 10,
+        "skipped": 2,
+        "digest": 5,
+        "source_failures": 0,
+    }
+    return PipelineResult(digest=[], ranked=[], counts=PipelineCounts(**(base | overrides)))
+
+
+class TestAssessRun:
+    def test_a_clean_run_is_ok(self) -> None:
+        summary = assess_run(_result(), source_count=6, digest_result=None)
+
+        assert summary.health is RunHealth.OK
+
+    def test_all_sources_failing_is_an_error(self) -> None:
+        summary = assess_run(
+            _result(fetched=0, source_failures=6), source_count=6, digest_result=None
+        )
+
+        assert summary.health is RunHealth.ERROR
+
+    def test_a_partial_source_failure_is_a_warning(self) -> None:
+        summary = assess_run(_result(source_failures=2), source_count=6, digest_result=None)
+
+        assert summary.health is RunHealth.WARN
+
+    def test_zero_fetched_without_failures_is_a_warning(self) -> None:
+        """No errors but nothing came back — a board shape change hides exactly like this."""
+        summary = assess_run(_result(fetched=0), source_count=6, digest_result=None)
+
+        assert summary.health is RunHealth.WARN
+
+    def test_the_line_reports_counts_and_the_email(self) -> None:
+        digest = DigestResult(sent=True, count=5, message_id="ses-123")
+        summary = assess_run(_result(), source_count=6, digest_result=digest)
+
+        line = summary.line()
+        assert "fetched=100" in line
+        assert "emailed=5" in line
+        assert "ses-123" in line
+
+    def test_health_maps_to_log_levels(self) -> None:
+        assert RunHealth.OK.log_level == logging.INFO
+        assert RunHealth.WARN.log_level == logging.WARNING
+        assert RunHealth.ERROR.log_level == logging.ERROR
 
 
 class TestLoadDotenv:
