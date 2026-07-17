@@ -113,6 +113,7 @@
       "LLM",
       "RAG",
       "agents",
+      "TypeScript",
       "Docker",
       "CI/CD"
     ],
@@ -130,6 +131,13 @@
       "CloudWatch"
     ]
   },
+  "strengths": [
+    "Full-stack development in Python and TypeScript, owning features end to end (build, deploy, iterate) — backend and data engineering are the deepest",
+    "Document extraction: builds systems that read messy real-world documents (PDF, Word, scanned) and pull the data out into clean, usable, structured form",
+    "Production RAG and agent systems (RAG/FAISS, MCP, LLM-in-the-loop), AWS serverless, Python and SQL daily",
+    "Technical mentoring: built a backend solo and taught engineers to write tested code, set up their environment, and ship",
+    "Agentic AI-paired engineering: builds end to end with Claude Code as a daily workflow accelerator (LuBot.ai)"
+  ],
   "skip_flags": {
     "_comment": "Hard disqualifiers. Encoded in Phase 2 scoring; never guessed at by the prefilter.",
     "azure_mandatory": "Azure required (not just nice-to-have)",

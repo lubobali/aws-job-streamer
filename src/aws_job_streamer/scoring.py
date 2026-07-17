@@ -86,6 +86,7 @@ def build_prompt(job: Job, *, profile: dict[str, Any]) -> str:
     domains = profile.get("domains", {})
     core_domains = "; ".join(domains.get("core", []))
     secondary_domains = "; ".join(domains.get("secondary", []))
+    strengths = "; ".join(profile.get("strengths", [])) or "(none listed)"
 
     return f"""You are screening a job posting for one specific engineer. Be honest and strict.
 
@@ -96,6 +97,8 @@ CANDIDATE
   Skills he is SHIPPING IN PRODUCTION RIGHT NOW (count these as REAL, demonstrable
     capability — he can do this work today; at most note in a single clause that a
     few are recently acquired, and NEVER treat them as absent or as a major gap): {building}
+  Signature strengths (real, demonstrated capabilities beyond a tool list — weigh these as
+    genuine experience, not aspirations): {strengths}
   Core domains (his home turf): {core_domains}
   Secondary domains (a genuine but MINOR plus — a modest bump, never enough to
     rescue a weak skills match on its own): {secondary_domains}

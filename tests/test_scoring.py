@@ -112,6 +112,20 @@ class TestBuildPrompt:
         assert "research" in prompt  # it must draw the production-vs-research line
         assert "screened out" in prompt or "screen him out" in prompt  # forbids the defeatist read
 
+    def test_includes_signature_strengths(self) -> None:
+        """Strengths beyond a tool list (full-stack ownership, document extraction, mentoring) are
+        what rescue full-stack-leaning roles the tool list alone under-scores (e.g. Molten)."""
+        extras = ["Document extraction from messy PDFs", "Mentors engineers"]
+        profile = PROFILE | {"strengths": extras}
+
+        prompt = build_prompt(a_job(), profile=profile)
+
+        assert "Document extraction from messy PDFs" in prompt
+        assert "Mentors engineers" in prompt
+
+    def test_missing_strengths_does_not_crash(self) -> None:
+        assert "none listed" in build_prompt(a_job(), profile=PROFILE)
+
     def test_warns_against_tool_keyword_overscoring(self) -> None:
         """The 6 Astronomer roles scored 92-95 on the word 'Airflow' alone — customer-support and
         Go/K8s platform jobs that aren't his lane. The prompt must judge discipline and stack."""
