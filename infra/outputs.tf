@@ -13,6 +13,21 @@ output "ssm_adzuna_app_key_name" {
   value       = aws_ssm_parameter.adzuna_app_key.name
 }
 
+output "ssm_openrouter_api_key_name" {
+  description = "SSM parameter NAME for the OpenRouter key. Set its value out of band (see below)."
+  value       = aws_ssm_parameter.openrouter_api_key.name
+}
+
+output "lambda_function_name" {
+  description = "The scheduled pipeline Lambda. Invoke by hand: aws lambda invoke --function-name <this> out.json"
+  value       = aws_lambda_function.poll.function_name
+}
+
+output "schedule_state" {
+  description = "Whether the EventBridge schedule is live. Flip with -var schedule_enabled=true."
+  value       = aws_cloudwatch_event_rule.schedule.state
+}
+
 output "digest_recipient" {
   description = "Address the digest is sent TO (verified for the SES sandbox)."
   value       = aws_ses_email_identity.digest_recipient.email

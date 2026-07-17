@@ -42,3 +42,14 @@ resource "aws_ssm_parameter" "adzuna_app_key" {
     ignore_changes = [value]
   }
 }
+
+resource "aws_ssm_parameter" "openrouter_api_key" {
+  name        = "${local.ssm_prefix}/openrouter/api_key"
+  description = "OpenRouter API key — the LLM scorer's credential. Read by the Lambda at runtime."
+  type        = "SecureString"
+  value       = "PLACEHOLDER — set with: aws ssm put-parameter --overwrite"
+
+  lifecycle {
+    ignore_changes = [value]
+  }
+}
