@@ -112,6 +112,14 @@ class TestBuildPrompt:
         assert "research" in prompt  # it must draw the production-vs-research line
         assert "screened out" in prompt or "screen him out" in prompt  # forbids the defeatist read
 
+    def test_warns_against_tool_keyword_overscoring(self) -> None:
+        """The 6 Astronomer roles scored 92-95 on the word 'Airflow' alone — customer-support and
+        Go/K8s platform jobs that aren't his lane. The prompt must judge discipline and stack."""
+        prompt = build_prompt(a_job(), profile=PROFILE).lower()
+
+        assert "customer" in prompt  # discount customer-facing roles that name his tools
+        assert "building the tool" in prompt  # using a tool != building that tool's product
+
 
 class TestPromptInjectionDefence:
     """A job description is data to judge, never instructions to obey.

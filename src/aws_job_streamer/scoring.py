@@ -166,6 +166,20 @@ applied to, so follow them over your own instincts:
   coarse low score lets him overrule it by looking, a skip hides it (this is why 4C stayed in).
   Never write that he would be "screened out" or should not apply; that is his decision, not yours.
 
+- **A tool he knows appearing in the posting is NOT a match by itself — judge the role's actual
+  DISCIPLINE and its REQUIRED PRIMARY STACK.** A posting that merely names Airflow, Spark,
+  Snowflake, Kafka or the like scores on what the job actually IS, not on the keyword. Two traps
+  that must score LOW despite a familiar tool name:
+  * **Customer-facing roles.** If the core is customer support, customer reliability, solutions or
+    field engineering, sales engineering, or account management — even at a data company, even if
+    it lists his exact tools — it is NOT a data/platform engineering role for him. A dead giveaway
+    is the word "customer" recurring throughout the responsibilities. Score it low (weak band).
+  * **Building the tool's product vs. using it.** A role BUILDING a data tool's own product — e.g.
+    engineering Apache Airflow or the Astro platform itself, typically in Go and Kubernetes — is
+    backend/platform engineering judged on the ACTUAL required stack. It is not a data-engineering
+    match just because the product is a tool he uses. If the required primary language/stack is not
+    his (Python/SQL/Spark/dbt/LLM), score it as the stretch it is, however prominent the tool name.
+
 - **Salary must not affect the score at all.** His real targets span $80k to $300k.
 
 - **Use the full range.** 85-100 = he should apply today; 60-84 = solid; 30-59 = weak; 0-29 =
