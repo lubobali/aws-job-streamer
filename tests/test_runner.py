@@ -66,6 +66,17 @@ class TestSettings:
         assert settings.region == "us-east-2"
         assert settings.sender == "jobs@lubobali.com"
 
+    def test_cold_start_guard_is_on_by_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The scheduled run must be budget-safe without any extra config."""
+        monkeypatch.setenv("OPENROUTER_API_KEY", "k")
+        for var in ("COLD_START_MAX_AGE_DAYS", "MAX_SCORE_PER_RUN"):
+            monkeypatch.delenv(var, raising=False)
+
+        settings = Settings.from_env()
+
+        assert settings.max_age_days == 30
+        assert settings.max_score_per_run == 200
+
     def test_env_overrides_defaults(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("OPENROUTER_API_KEY", "k")
         monkeypatch.setenv("JOBS_TABLE", "other-table")

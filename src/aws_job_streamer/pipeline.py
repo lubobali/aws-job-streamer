@@ -24,6 +24,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
 
 from aws_job_streamer.fit import RankedJob, Status, for_digest, rank
@@ -32,6 +33,12 @@ from aws_job_streamer.prefilter import keep_worth_scoring
 from aws_job_streamer.scoring import ScoredJob
 
 _DEFAULT_DIGEST_LIMIT = 10
+_EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
+
+
+def _utcnow() -> datetime:
+    """Local clock, so this module stays free of the fetchers' httpx import (module docstring)."""
+    return datetime.now(UTC)
 
 Fetcher = Callable[[], list[Job]]
 """A source: called with no arguments, returns the jobs on one board or query."""
@@ -65,6 +72,10 @@ class PipelineCounts:
     skipped: int
     digest: int
     source_failures: int
+    deferred: int = 0
+    """New jobs the cold-start guard held back this run (too old, or over the per-run scoring
+    budget). They are NOT stored, so the next run reconsiders them — a big cold start drains
+    across runs instead of blowing the LLM budget at once. 0 when no guard is set."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,12 +96,20 @@ def run_pipeline(  # noqa: PLR0913 — each arg is an injected seam or a real tu
     digest_limit: int = _DEFAULT_DIGEST_LIMIT,
     min_score: int | None = None,
     per_company: int | None = None,
+    max_age_days: int | None = None,
+    max_score_per_run: int | None = None,
+    now: Callable[[], datetime] = _utcnow,
 ) -> PipelineResult:
     """Run one full cycle and return the ranked digest.
 
     `min_score` (digest floor) and `per_company` (max jobs per employer) default to None, which
     lets `for_digest` apply its own defaults (65 and 2) so `fit` stays the one source of truth.
     Matches trimmed by either stay in `ranked`, just not in `digest`.
+
+    `max_age_days` and `max_score_per_run` are the cold-start guard: they bound how many NEW jobs
+    a single run scores, so the first run over a fresh watchlist cannot blow the LLM budget. The
+    overflow is deferred (not scored, not stored) and the next run retries it. Both default to
+    None (no bound) — steady-state runs find little new, so the dedup gate already keeps runs cheap.
 
     Side effect: scored jobs (ranked and skipped) are written to the store, which closes the
     dedup gate for them. Nothing is emailed here — that is Phase 3's job on the returned digest.
@@ -99,8 +118,13 @@ def run_pipeline(  # noqa: PLR0913 — each arg is an injected seam or a real tu
     eligible = keep_worth_scoring(fetched)
     new = store.new_jobs_only(eligible)
 
+    to_score = _select_within_budget(
+        new, max_age_days=max_age_days, max_score_per_run=max_score_per_run, now=now
+    )
+    deferred = len(new) - len(to_score)
+
     # The cost gate: score_many([]) makes no call, so a nothing-new run spends nothing.
-    scored = scorer.score_many(new)
+    scored = scorer.score_many(to_score)
     ranked = rank(scored, profile=profile)
     store.save_new(ranked)
 
@@ -118,8 +142,33 @@ def run_pipeline(  # noqa: PLR0913 — each arg is an injected seam or a real tu
         skipped=sum(1 for r in ranked if r.status is Status.SKIPPED),
         digest=len(digest),
         source_failures=source_failures,
+        deferred=deferred,
     )
     return PipelineResult(digest=digest, ranked=ranked, counts=counts)
+
+
+def _select_within_budget(
+    jobs: Sequence[Job],
+    *,
+    max_age_days: int | None,
+    max_score_per_run: int | None,
+    now: Callable[[], datetime],
+) -> list[Job]:
+    """Choose which NEW jobs to score under the cold-start guard, freshest first.
+
+    A stale posting (older than `max_age_days`) is skipped — being 'early' does not apply to an
+    evergreen role, and old postings are what flood a cold start. Unknown age is KEPT (the same
+    'never drop on missing data' asymmetry as the prefilter). Then the freshest `max_score_per_run`
+    survive; the rest are left for the next run. Either bound unset means 'no bound'.
+    """
+    kept = list(jobs)
+    if max_age_days is not None:
+        cutoff = now() - timedelta(days=max_age_days)
+        kept = [j for j in kept if j.posted_at is None or j.posted_at >= cutoff]
+    kept.sort(key=lambda j: j.posted_at or _EPOCH, reverse=True)
+    if max_score_per_run is not None:
+        kept = kept[:max_score_per_run]
+    return kept
 
 
 def _fetch_all(sources: Sequence[Fetcher]) -> tuple[list[Job], int]:

@@ -64,6 +64,10 @@ class Settings:
     region: str = "us-east-2"
     sender: str = "jobs@lubobali.com"
     recipient: str = "lubobali23@gmail.com"
+    # Cold-start guard, ON by default so the scheduled Lambda can never blow the $10 OpenRouter cap.
+    # 200 jobs/run at ~$0.003 = ~$0.60/run worst case; a big cold start drains over successive runs.
+    max_age_days: int = 30
+    max_score_per_run: int = 200
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -76,6 +80,8 @@ class Settings:
             region=os.environ.get("AWS_REGION", "us-east-2"),
             sender=os.environ.get("DIGEST_SENDER", "jobs@lubobali.com"),
             recipient=os.environ.get("DIGEST_RECIPIENT", "lubobali23@gmail.com"),
+            max_age_days=int(os.environ.get("COLD_START_MAX_AGE_DAYS", "30")),
+            max_score_per_run=int(os.environ.get("MAX_SCORE_PER_RUN", "200")),
         )
 
 
@@ -100,7 +106,13 @@ def run(
     scorer = Scorer(api_key=settings.openrouter_key, profile=profile)
 
     result = run_pipeline(
-        sources, store=store, scorer=scorer, profile=profile, min_score=min_score
+        sources,
+        store=store,
+        scorer=scorer,
+        profile=profile,
+        min_score=min_score,
+        max_age_days=settings.max_age_days,
+        max_score_per_run=settings.max_score_per_run,
     )
 
     if not send:

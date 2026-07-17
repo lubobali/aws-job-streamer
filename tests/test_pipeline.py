@@ -28,7 +28,13 @@ PROFILE = {"skip_flags": {"years_required_above": 8}}
 NOW = datetime(2026, 7, 16, 12, 0, tzinfo=UTC)
 
 
-def a_job(source_id: str, *, location: str = "Remote (US)", remote: bool = True) -> Job:
+def a_job(
+    source_id: str,
+    *,
+    location: str = "Remote (US)",
+    remote: bool = True,
+    posted_at: datetime | None = NOW,
+) -> Job:
     return Job(
         source="greenhouse",
         source_id=source_id,
@@ -39,6 +45,7 @@ def a_job(source_id: str, *, location: str = "Remote (US)", remote: bool = True)
         url=f"https://x.io/j/{source_id}",
         location=location,
         remote=remote,
+        posted_at=posted_at,
         fetched_at=NOW,
     )
 
@@ -145,6 +152,102 @@ class TestHappyPath:
         )
 
         assert result.digest == []
+
+
+class TestCostGuard:
+    """The cold-start guard: a run must never blow the $10 OpenRouter cap. Two levers, both on the
+    NEW (post-dedup) jobs so nothing already-seen wastes budget: a freshness cut, and a hard
+    per-run scoring cap whose overflow is DEFERRED (not scored, not stored) so the next run retries
+    it — spreading a big cold start across runs. With no guard set, everything is scored (default).
+    """
+
+    OLD = datetime(2026, 5, 1, 12, 0, tzinfo=UTC)  # ~76 days before NOW
+
+    def _run(self, sources: Sequence[Fetcher], **kw: object) -> PipelineResult:
+        return run_pipeline(
+            sources, store=FakeStore(), scorer=FakeScorer(), profile=PROFILE, now=lambda: NOW, **kw
+        )
+
+    def test_no_guard_scores_everything(self) -> None:
+        scorer = FakeScorer()
+        run_pipeline(
+            [source(a_job("a"), a_job("b", posted_at=self.OLD))],
+            store=FakeStore(),
+            scorer=scorer,
+            profile=PROFILE,
+        )
+
+        assert {j.source_id for j in scorer.calls[0]} == {"a", "b"}
+
+    def test_freshness_cut_defers_old_jobs(self) -> None:
+        scorer = FakeScorer()
+        result = run_pipeline(
+            [source(a_job("fresh"), a_job("stale", posted_at=self.OLD))],
+            store=FakeStore(),
+            scorer=scorer,
+            profile=PROFILE,
+            now=lambda: NOW,
+            max_age_days=30,
+        )
+
+        assert {j.source_id for j in scorer.calls[0]} == {"fresh"}
+        assert result.counts.deferred == 1
+
+    def test_unknown_date_is_kept_under_the_freshness_cut(self) -> None:
+        """Unknown age = keep, the same asymmetry as the prefilter — never drop on missing data."""
+        scorer = FakeScorer()
+        run_pipeline(
+            [source(a_job("undated", posted_at=None))],
+            store=FakeStore(),
+            scorer=scorer,
+            profile=PROFILE,
+            now=lambda: NOW,
+            max_age_days=30,
+        )
+
+        assert {j.source_id for j in scorer.calls[0]} == {"undated"}
+
+    def test_hard_cap_scores_only_the_budget_and_defers_the_rest(self) -> None:
+        scorer = FakeScorer()
+        jobs = [a_job(str(i)) for i in range(5)]
+        result = run_pipeline(
+            [source(*jobs)],
+            store=FakeStore(),
+            scorer=scorer,
+            profile=PROFILE,
+            max_score_per_run=2,
+        )
+
+        assert len(scorer.calls[0]) == 2
+        assert result.counts.deferred == 3
+
+    def test_deferred_jobs_are_not_stored_so_the_next_run_retries_them(self) -> None:
+        store = FakeStore()
+        jobs = [a_job(str(i)) for i in range(5)]
+        run_pipeline(
+            [source(*jobs)],
+            store=store,
+            scorer=FakeScorer(),
+            profile=PROFILE,
+            max_score_per_run=2,
+        )
+
+        assert len(store.saved) == 2  # only the scored ones close the dedup gate
+
+    def test_the_cap_keeps_the_freshest_jobs(self) -> None:
+        scorer = FakeScorer()
+        newest = a_job("newest", posted_at=NOW)
+        middle = a_job("middle", posted_at=datetime(2026, 7, 10, tzinfo=UTC))
+        oldest = a_job("oldest", posted_at=self.OLD)
+        run_pipeline(
+            [source(oldest, newest, middle)],
+            store=FakeStore(),
+            scorer=scorer,
+            profile=PROFILE,
+            max_score_per_run=2,
+        )
+
+        assert {j.source_id for j in scorer.calls[0]} == {"newest", "middle"}
 
     def test_combines_multiple_sources(self) -> None:
         result = run([source(a_job("a")), source(a_job("b")), source(a_job("c"))])
