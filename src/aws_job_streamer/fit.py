@@ -110,7 +110,29 @@ def for_digest(
     Both trim from the email while leaving everything in the record.
     """
     strong = [r for r in ranked if r.status is Status.RANKED and r.scored.score >= min_score]
-    return _cap_per_company(strong, per_company)[:limit]
+    unique = _collapse_duplicate_roles(strong)
+    return _cap_per_company(unique, per_company)[:limit]
+
+
+def _collapse_duplicate_roles(ranked: Sequence[RankedJob]) -> list[RankedJob]:
+    """Show a role once. A company can post the same role under several IDs (Lithic listed 'Senior
+    Software Engineer, Data Platform' twice); Layer-1 dedup keys on source+id, so both survive as
+    distinct jobs. This is the deferred second layer, scoped to the digest: collapse same company +
+    same normalized title, keeping the first (best-first order means the highest-scored). An empty
+    company is never collapsed — Adzuna omits it, and unrelated nameless jobs must not merge.
+    """
+    seen: set[tuple[str, str]] = set()
+    kept: list[RankedJob] = []
+    for r in ranked:
+        company = (r.scored.job.company or "").strip().lower()
+        title = " ".join((r.scored.job.title or "").split()).lower()
+        key = (company, title)
+        if company and key in seen:
+            continue
+        if company:
+            seen.add(key)
+        kept.append(r)
+    return kept
 
 
 def _cap_per_company(ranked: Sequence[RankedJob], per_company: int) -> list[RankedJob]:

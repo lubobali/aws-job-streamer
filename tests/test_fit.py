@@ -35,13 +35,14 @@ def a_scored(  # noqa: PLR0913 — a builder; every field is an independent knob
     skip_flags: tuple[str, ...] = (),
     source_id: str = "1",
     company: str = "Acme",
+    title: str = "Data Engineer",
     posted_at: datetime | None = None,
 ) -> ScoredJob:
     job = Job(
         source="greenhouse",
         source_id=source_id,
         company=company,
-        title="Data Engineer",
+        title=title,
         url="https://x.io/j/1",
         location=location,
         remote=remote,
@@ -319,7 +320,11 @@ class TestPerCompanyCap:
     ranking is already best-first) and only trims within a company — never across."""
 
     def test_caps_a_flooding_company_to_two(self) -> None:
-        jobs = [a_scored(score=90 - i, company="Astronomer", source_id=str(i)) for i in range(6)]
+        # Distinct titles so the duplicate-role collapse doesn't merge them before the cap acts.
+        jobs = [
+            a_scored(score=90 - i, company="Astronomer", title=f"Role {i}", source_id=str(i))
+            for i in range(6)
+        ]
 
         digest = for_digest(rank(jobs, profile=PROFILE))
 
@@ -327,9 +332,9 @@ class TestPerCompanyCap:
 
     def test_keeps_the_two_highest_scored_of_that_company(self) -> None:
         jobs = [
-            a_scored(score=95, company="Astronomer", source_id="best"),
-            a_scored(score=90, company="Astronomer", source_id="mid"),
-            a_scored(score=80, company="Astronomer", source_id="low"),
+            a_scored(score=95, company="Astronomer", title="A", source_id="best"),
+            a_scored(score=90, company="Astronomer", title="B", source_id="mid"),
+            a_scored(score=80, company="Astronomer", title="C", source_id="low"),
         ]
 
         digest = for_digest(rank(jobs, profile=PROFILE))
@@ -348,7 +353,10 @@ class TestPerCompanyCap:
         assert len(digest) == 3
 
     def test_the_cap_is_configurable(self) -> None:
-        jobs = [a_scored(score=90 - i, company="Astronomer", source_id=str(i)) for i in range(5)]
+        jobs = [
+            a_scored(score=90 - i, company="Astronomer", title=f"Role {i}", source_id=str(i))
+            for i in range(5)
+        ]
 
         digest = for_digest(rank(jobs, profile=PROFILE), per_company=3)
 
@@ -361,3 +369,53 @@ class TestPerCompanyCap:
         digest = for_digest(rank(jobs, profile=PROFILE))
 
         assert len(digest) == 4
+
+
+class TestCollapseDuplicateRoles:
+    """A company can post the same role twice under different IDs (Lithic did: two 'Senior
+    Software Engineer, Data Platform', both 95). Layer-1 dedup keys on source+id, so both slip
+    through as 'new'. The digest shows a role once — same company + title collapses to the best."""
+
+    def test_same_company_same_title_collapses_to_one(self) -> None:
+        jobs = [
+            a_scored(score=95, company="Lithic", title="Senior SWE, Data Platform", source_id="a"),
+            a_scored(score=95, company="Lithic", title="Senior SWE, Data Platform", source_id="b"),
+        ]
+
+        digest = for_digest(rank(jobs, profile=PROFILE))
+
+        assert len(digest) == 1
+
+    def test_it_keeps_the_higher_scored_of_the_duplicates(self) -> None:
+        jobs = [
+            a_scored(score=88, company="Lithic", title="Data Platform Eng", source_id="lower"),
+            a_scored(score=95, company="Lithic", title="Data Platform Eng", source_id="higher"),
+        ]
+
+        digest = for_digest(rank(jobs, profile=PROFILE))
+
+        assert [r.scored.job.source_id for r in digest] == ["higher"]
+
+    def test_title_match_ignores_case_and_whitespace(self) -> None:
+        jobs = [
+            a_scored(score=90, company="Lithic", title="Data Engineer", source_id="a"),
+            a_scored(score=88, company="Lithic", title="  data  engineer ", source_id="b"),
+        ]
+
+        assert len(for_digest(rank(jobs, profile=PROFILE))) == 1
+
+    def test_same_title_different_company_is_kept(self) -> None:
+        jobs = [
+            a_scored(score=90, company="Lithic", title="Data Engineer", source_id="a"),
+            a_scored(score=88, company="Mercury", title="Data Engineer", source_id="b"),
+        ]
+
+        assert len(for_digest(rank(jobs, profile=PROFILE))) == 2
+
+    def test_different_titles_same_company_are_kept(self) -> None:
+        jobs = [
+            a_scored(score=90, company="Lithic", title="Data Engineer", source_id="a"),
+            a_scored(score=88, company="Lithic", title="ML Ops Engineer", source_id="b"),
+        ]
+
+        assert len(for_digest(rank(jobs, profile=PROFILE))) == 2
