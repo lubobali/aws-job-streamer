@@ -14,12 +14,14 @@ Two rules this module encodes, both learned from the 18 jobs Lubo actually appli
   * **Skips MARK, they never delete.** A wrongly-flagged job must still be inspectable, not vanish
     — the same anti-silent-drop discipline as the location ranker and the fetchers.
 
-Ranking: **fit score first, location as the tiebreaker, freshness last.** A strong match in
-Chicago beats a weak one that happens to be remote — Lubo wants the best *jobs*, and location
-decides only between jobs he'd be comparably happy to do. Because the LLM scores coarsely
-(observed: 92, 88, 72, 45), comparably-good jobs share a score and location does the real sorting
-within each cluster. (If location should instead always win — float every remote role above a
-slightly-better onsite one — that is a one-line change to the sort key; flagged for review.)
+Ranking: **workability first, then fit score, then location tier, then freshness.** A job in a
+place he cannot work — onsite/hybrid in a city he won't relocate to (OTHER_US) — sinks below every
+workable role no matter how strong the skills match: a 92 in San Francisco he can't take must not
+outrank a 72 remote role he can. It stays ranked and visible (never dropped) in case it flexes to
+remote. WITHIN the workable band, fit score leads and location tier breaks ties, so a strong
+Chicago or target-metro job still beats a weaker remote one — Lubo wants the best *jobs* among the
+ones he could actually take. (Resolved 2026-07-17: a real SF-onsite 92 had been topping the digest
+over remote roles; workability is now an explicit first-class sort term, not a tiebreaker.)
 """
 
 from __future__ import annotations
@@ -210,14 +212,20 @@ def _skip_reason(scored: ScoredJob, *, profile: dict[str, Any]) -> str | None:
 _EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
 
 
-def _sort_key(r: RankedJob) -> tuple[int, int, int, float]:
+def _sort_key(r: RankedJob) -> tuple[int, int, int, int, float]:
     """The ranking key. Ascending sort, so smaller = better; every term is negated.
 
-    1. status  — ranked (0) before skipped (1); a skip beats no score at all.
-    2. score   — higher fit first. The primary signal.
-    3. tier    — lower tier (better location) first, breaking score ties.
-    4. posted  — fresher first; being early to a new posting is the point.
+    1. status      — ranked (0) before skipped (1); a skip beats no score at all.
+    2. workability — a location he CAN work (0) before one he can't (1). OTHER_US is the
+                     "onsite/hybrid in a city he won't relocate to" bucket; a great match there is
+                     still one he can't take, so it sinks below every workable role regardless of
+                     score. It stays ranked (visible, never dropped) in case it flexes to remote.
+    3. score       — higher fit first, WITHIN each workability band. The primary signal among jobs
+                     he could actually take (a strong Chicago/remote job still beats a weak one).
+    4. tier        — lower tier (better location) first, breaking score ties.
+    5. posted      — fresher first; being early to a new posting is the point.
     """
     status_rank = 0 if r.status is Status.RANKED else 1
+    unworkable = 1 if r.location_tier is Tier.OTHER_US else 0
     posted = (r.scored.job.posted_at or _EPOCH).timestamp()
-    return (status_rank, -r.scored.score, r.location_tier.value, -posted)
+    return (status_rank, unworkable, -r.scored.score, r.location_tier.value, -posted)

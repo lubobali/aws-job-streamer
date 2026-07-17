@@ -205,6 +205,31 @@ class TestRankOrder:
 
         assert ranked[0].scored.job.source_id == "strong"
 
+    def test_an_unworkable_location_sinks_below_a_lower_scored_workable_job(self) -> None:
+        """A 92 onsite in a city he won't relocate to (SF/Austin = OTHER_US) must NOT outrank a 72
+        remote role he can actually take. It stays ranked/visible, just below every workable job."""
+        austin_strong = a_scored(
+            score=92, source_id="austin", location="Austin, TX", remote=False, workplace="onsite"
+        )
+        remote_weaker = a_scored(score=72, source_id="remote", workplace="remote")
+
+        ranked = rank([austin_strong, remote_weaker], profile=PROFILE)
+
+        assert [r.scored.job.source_id for r in ranked] == ["remote", "austin"]
+
+    def test_it_is_workability_not_remoteness_that_demotes(self) -> None:
+        """Chicago onsite (a bridge he'd take = workable) still beats a higher-scored OTHER_US."""
+        chicago = a_scored(
+            score=60, source_id="chi", location="Chicago, IL", remote=False, workplace="onsite"
+        )
+        austin = a_scored(
+            score=92, source_id="austin", location="Austin, TX", remote=False, workplace="onsite"
+        )
+
+        ranked = rank([austin, chicago], profile=PROFILE)
+
+        assert [r.scored.job.source_id for r in ranked] == ["chi", "austin"]
+
     def test_freshness_breaks_a_score_and_location_tie(self) -> None:
         older = a_scored(score=80, source_id="old", posted_at=datetime(2026, 7, 1, tzinfo=UTC))
         newer = a_scored(score=80, source_id="new", posted_at=datetime(2026, 7, 15, tzinfo=UTC))
