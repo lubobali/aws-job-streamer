@@ -113,9 +113,21 @@ class TestTier4HybridWithRareTravel:
 
 
 class TestTier5ChicagoBridge:
-    @pytest.mark.parametrize("location", ["Chicago, IL", "Evanston, IL", "Naperville, IL"])
-    def test_chicago_is_ranked_not_dropped(self, location: str) -> None:
-        """A temporary bridge he would accept — so it must still surface."""
+    @pytest.mark.parametrize(
+        "location",
+        [
+            "Chicago, IL",
+            "Evanston, IL",
+            "Naperville, IL",
+            "Lemont, IL",  # Argonne National Laboratory — Chicago metro, ~25mi, commutable
+            "Joliet, IL",
+            "Schaumburg, IL",
+            "DuPage County, IL",
+        ],
+    )
+    def test_chicagoland_is_ranked_not_dropped(self, location: str) -> None:
+        """A temporary bridge he would accept — so it must still surface, and NOT sink to OTHER_US
+        (an Argonne role in Lemont did exactly that until Chicagoland was broadened)."""
         assert location_tier(a_job(location)) is Tier.CURRENT_BASE
 
     def test_chicago_beats_an_unrelated_us_city(self) -> None:

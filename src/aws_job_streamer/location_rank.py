@@ -59,7 +59,14 @@ _TARGET_METRO = re.compile(
 
 # Where he lives today. Matched loosely so Adzuna's "Chicago, Cook County" still lands here.
 _CURRENT_BASE = re.compile(
-    r"\b(?:Chicago|Evanston|Oak Park|Naperville|Schaumburg|Cook County)\b",
+    # Chicago + Chicagoland: his current base, a bridge he would take. Broadened 2026-07-17 when an
+    # Argonne National Laboratory role in Lemont, IL sank to OTHER_US and got wrongly demoted as
+    # unworkable — Lemont is Chicago metro (~25mi, commutable). Curated suburbs + collar counties;
+    # ambiguous bare names (Aurora, Lake County) are left out to avoid matching other states.
+    r"\b(?:Chicago|Chicagoland|Evanston|Oak Park|Naperville|Schaumburg|Lemont|Joliet|Elgin"
+    r"|Cicero|Skokie|Arlington Heights|Des Plaines|Orland Park|Tinley Park|Bolingbrook"
+    r"|Downers Grove|Elmhurst|Lombard|Wheaton|Oak Brook|Hinsdale|Palatine"
+    r"|Cook County|DuPage County|Will County|McHenry County)\b",
     re.IGNORECASE,
 )
 
