@@ -32,7 +32,9 @@ def a_job(source_id: str, *, location: str = "Remote (US)", remote: bool = True)
     return Job(
         source="greenhouse",
         source_id=source_id,
-        company="Acme",
+        # A distinct company per job, so the digest's per-company cap doesn't trim tests that are
+        # about the limit or source-combining. Tests that want a flood set the same company.
+        company=f"Co-{source_id}",
         title="Data Engineer",
         url=f"https://x.io/j/{source_id}",
         location=location,

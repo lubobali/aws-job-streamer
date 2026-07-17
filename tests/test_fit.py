@@ -34,12 +34,13 @@ def a_scored(  # noqa: PLR0913 — a builder; every field is an independent knob
     work_authorization: str | None = None,
     skip_flags: tuple[str, ...] = (),
     source_id: str = "1",
+    company: str = "Acme",
     posted_at: datetime | None = None,
 ) -> ScoredJob:
     job = Job(
         source="greenhouse",
         source_id=source_id,
-        company="Acme",
+        company=company,
         title="Data Engineer",
         url="https://x.io/j/1",
         location=location,
@@ -261,7 +262,8 @@ class TestForDigest:
         assert [r.scored.job.source_id for r in digest] == ["good"]
 
     def test_takes_only_the_top_n(self) -> None:
-        jobs = [a_scored(score=90 - i, source_id=str(i)) for i in range(15)]
+        # Distinct companies so the per-company cap doesn't trim before the limit does.
+        jobs = [a_scored(score=90 - i, source_id=str(i), company=f"Co{i}") for i in range(15)]
 
         digest = for_digest(rank(jobs, profile=PROFILE), limit=10)
 
@@ -309,3 +311,53 @@ class TestDigestScoreFloor:
         assert len(ranked) == 1
         assert ranked[0].status is Status.RANKED
         assert for_digest(ranked) == []
+
+
+class TestPerCompanyCap:
+    """No single employer floods the digest. The first real run emailed 6 Astronomer roles of 8;
+    the cap keeps at most 2 per company so the digest stays varied. It keeps the BEST ones (the
+    ranking is already best-first) and only trims within a company — never across."""
+
+    def test_caps_a_flooding_company_to_two(self) -> None:
+        jobs = [a_scored(score=90 - i, company="Astronomer", source_id=str(i)) for i in range(6)]
+
+        digest = for_digest(rank(jobs, profile=PROFILE))
+
+        assert len(digest) == 2
+
+    def test_keeps_the_two_highest_scored_of_that_company(self) -> None:
+        jobs = [
+            a_scored(score=95, company="Astronomer", source_id="best"),
+            a_scored(score=90, company="Astronomer", source_id="mid"),
+            a_scored(score=80, company="Astronomer", source_id="low"),
+        ]
+
+        digest = for_digest(rank(jobs, profile=PROFILE))
+
+        assert [r.scored.job.source_id for r in digest] == ["best", "mid"]
+
+    def test_does_not_cap_across_different_companies(self) -> None:
+        jobs = [
+            a_scored(score=90, company="Modelyst", source_id="a"),
+            a_scored(score=88, company="Foodsmart", source_id="b"),
+            a_scored(score=86, company="Mercury", source_id="c"),
+        ]
+
+        digest = for_digest(rank(jobs, profile=PROFILE))
+
+        assert len(digest) == 3
+
+    def test_the_cap_is_configurable(self) -> None:
+        jobs = [a_scored(score=90 - i, company="Astronomer", source_id=str(i)) for i in range(5)]
+
+        digest = for_digest(rank(jobs, profile=PROFILE), per_company=3)
+
+        assert len(digest) == 3
+
+    def test_an_empty_company_is_not_capped(self) -> None:
+        """Adzuna sometimes has no company name; those must not all collapse to one bucket."""
+        jobs = [a_scored(score=90 - i, company="", source_id=str(i)) for i in range(4)]
+
+        digest = for_digest(rank(jobs, profile=PROFILE))
+
+        assert len(digest) == 4

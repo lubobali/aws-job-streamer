@@ -36,6 +36,10 @@ from aws_job_streamer.scoring import ScoredJob
 _DEFAULT_YEARS_WALL = 8
 _DEFAULT_DIGEST_LIMIT = 10
 _DEFAULT_MIN_SCORE = 65
+_DEFAULT_PER_COMPANY = 2
+"""At most this many jobs from one employer in a digest, so a single company (e.g. an Airflow shop
+posting six Airflow roles) cannot flood it. The ranking is best-first, so the ones kept are that
+company's strongest. Below-cap jobs stay in the full ranking, inspectable — trimmed, not dropped."""
 """The digest floor: below this, a match is real but not strong enough to email. It stays in the
 full ranking (inspectable) but is kept out of the inbox — an honest short digest beats a padded
 one. Calibrated against the gold set, where genuine targets score 72-92 and stretches sit lower."""
@@ -96,15 +100,35 @@ def for_digest(
     *,
     limit: int = _DEFAULT_DIGEST_LIMIT,
     min_score: int = _DEFAULT_MIN_SCORE,
+    per_company: int = _DEFAULT_PER_COMPANY,
 ) -> list[RankedJob]:
-    """Return the top `limit` RANKED jobs scoring at least `min_score` — what goes in the email.
+    """Return the top `limit` RANKED jobs (score >= `min_score`, <= `per_company` each) to email.
 
-    Two explicit filters, never silent drops: skipped jobs and below-floor jobs are excluded here,
-    not in `rank()`, so the full ranking (skips and weak matches alike) stays inspectable. The
-    floor keeps weak-but-real matches out of the inbox while leaving them in the record.
+    Three explicit filters, never silent drops: skipped jobs, below-floor jobs, and a company's
+    surplus are excluded here, not in `rank()`, so the full ranking stays inspectable. The floor
+    keeps weak matches out of the inbox; the per-company cap keeps one employer from flooding it.
+    Both trim from the email while leaving everything in the record.
     """
     strong = [r for r in ranked if r.status is Status.RANKED and r.scored.score >= min_score]
-    return strong[:limit]
+    return _cap_per_company(strong, per_company)[:limit]
+
+
+def _cap_per_company(ranked: Sequence[RankedJob], per_company: int) -> list[RankedJob]:
+    """Keep at most `per_company` jobs per employer, preserving best-first order.
+
+    An empty company name is never capped: Adzuna sometimes omits it, and collapsing every
+    nameless posting into one bucket would wrongly drop unrelated jobs.
+    """
+    seen: dict[str, int] = {}
+    kept: list[RankedJob] = []
+    for r in ranked:
+        company = (r.scored.job.company or "").strip().lower()
+        if company and seen.get(company, 0) >= per_company:
+            continue
+        if company:
+            seen[company] = seen.get(company, 0) + 1
+        kept.append(r)
+    return kept
 
 
 def _location_tier(scored: ScoredJob) -> Tier:
