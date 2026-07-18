@@ -6,12 +6,14 @@ from aws_job_streamer.watchlist import (
     ADZUNA_QUERIES,
     REMOTIVE_SEARCHES,
     WATCHLIST,
+    WORKDAY_SEARCHES,
     AdzunaQuery,
     Board,
     adzuna_fetchers,
     all_sources,
     remotive_fetchers,
     to_fetchers,
+    workday_fetchers,
 )
 
 
@@ -102,8 +104,23 @@ class TestAdzunaSources:
         assert len(adzuna_fetchers()) == len(ADZUNA_QUERIES)
 
 
+class TestWorkdaySources:
+    def test_one_fetcher_per_board_and_search(self) -> None:
+        # 3 gov/defense boards x the search terms.
+        assert len(workday_fetchers()) == 3 * len(WORKDAY_SEARCHES)
+
+    def test_binds_the_board_and_search(self) -> None:
+        fetcher = workday_fetchers()[0]
+
+        assert fetcher.args[0].tenant == "gdit"  # type: ignore[attr-defined]
+        assert fetcher.args[1] in WORKDAY_SEARCHES  # type: ignore[attr-defined]
+
+
 class TestAllSources:
     def test_combines_every_source_family(self) -> None:
         assert len(all_sources()) == (
-            len(WATCHLIST) + len(REMOTIVE_SEARCHES) + len(ADZUNA_QUERIES)
+            len(WATCHLIST)
+            + len(REMOTIVE_SEARCHES)
+            + len(ADZUNA_QUERIES)
+            + len(workday_fetchers())
         )

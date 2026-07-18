@@ -16,7 +16,8 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from functools import partial
 
-from aws_job_streamer.fetchers import adzuna, ashby, greenhouse, lever, remotive
+from aws_job_streamer.fetchers import adzuna, ashby, greenhouse, lever, remotive, workday
+from aws_job_streamer.fetchers.workday import WorkdayBoard
 from aws_job_streamer.models import Job
 
 Fetcher = Callable[[], list[Job]]
@@ -172,6 +173,32 @@ def adzuna_fetchers(queries: Sequence[AdzunaQuery] = ADZUNA_QUERIES) -> list[Fet
     return [q.to_fetcher() for q in queries]
 
 
+# Workday = gov/defense contractors, his US-citizen/clearance MOAT — a category no other source
+# covers. Boards are per-tenant with an unguessable `site` segment, so they were discovered ONCE
+# (via robots.txt) and their coordinates hardcoded here rather than re-discovered every run.
+# Kept lean: Workday hydrates each job in a second call, and most gov roles are onsite at a facility
+# (OTHER_US, filtered from the digest). The payoff is the rare REMOTE clearance role — moat AND
+# workable — plus the onsite ones staying in the full ranking for inspection.
+_WORKDAY_BOARDS: tuple[tuple[WorkdayBoard, str], ...] = (
+    (WorkdayBoard("gdit", "External_Career_Site", "gdit.wd5.myworkdayjobs.com"), "GDIT"),
+    (WorkdayBoard("leidos", "External", "leidos.wd5.myworkdayjobs.com"), "Leidos"),
+    (WorkdayBoard("parsons", "Search", "parsons.wd5.myworkdayjobs.com"), "Parsons"),
+)
+WORKDAY_SEARCHES: tuple[str, ...] = ("data engineer", "AI engineer")
+
+
+def workday_fetchers() -> list[Fetcher]:
+    """Build a Workday fetcher per (gov/defense board x search). max_results is small on purpose —
+    each hit costs a second hydration call, and the yield to the workable digest is a few remote
+    clearance roles."""
+    return [
+        partial(workday.fetch_jobs, board, term, company=company, max_results=10)
+        for board, company in _WORKDAY_BOARDS
+        for term in WORKDAY_SEARCHES
+    ]
+
+
 def all_sources() -> list[Fetcher]:
-    """Every source a full run pulls: ATS watchlist + Remotive (remote) + Adzuna (local metros)."""
-    return to_fetchers() + remotive_fetchers() + adzuna_fetchers()
+    """Every source a full run pulls: ATS watchlist + Remotive (remote) + Adzuna (local metros) +
+    Workday (gov/defense moat)."""
+    return to_fetchers() + remotive_fetchers() + adzuna_fetchers() + workday_fetchers()
