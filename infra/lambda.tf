@@ -121,6 +121,8 @@ resource "aws_lambda_function" "poll" {
       MAX_SCORE_PER_RUN       = tostring(var.max_score_per_run)
       COLD_START_MAX_AGE_DAYS = tostring(var.max_age_days)
       OPENROUTER_SSM_NAME     = aws_ssm_parameter.openrouter_api_key.name
+      # Only set SCORER_MODEL when non-empty, so an unset var falls through to the code default.
+      SCORER_MODEL = var.scorer_model
     }
   }
 

@@ -21,7 +21,7 @@ from typing import Any
 from aws_job_streamer.dedup import JobStore
 from aws_job_streamer.digest import DigestMailer, DigestResult, send_digest
 from aws_job_streamer.pipeline import PipelineResult, run_pipeline
-from aws_job_streamer.scoring import Scorer
+from aws_job_streamer.scoring import DEFAULT_MODEL, Scorer
 from aws_job_streamer.watchlist import Board, to_fetchers
 
 _log = logging.getLogger("aws_job_streamer")
@@ -138,10 +138,13 @@ class Settings:
     region: str = "us-east-2"
     sender: str = "jobs@lubobali.com"
     recipient: str = "lubobali23@gmail.com"
-    # Cold-start guard, ON by default so the scheduled Lambda can never blow the $10 OpenRouter cap.
-    # 200 jobs/run at ~$0.003 = ~$0.60/run worst case; a big cold start drains over successive runs.
-    max_age_days: int = 30
+    # Cold-start guard, ON by default so the scheduled Lambda can never blow the OpenRouter budget.
+    # Measured cost is ~$0.012/job on Sonnet (4x an earlier guess), so the levers below matter: a
+    # 14-day freshness cut shrinks a cold start from ~2300 jobs to a few hundred, and scorer_model
+    # (Haiku ~1/3 the price) cuts the per-job cost — validated on the gold set before it is trusted.
+    max_age_days: int = 14
     max_score_per_run: int = 200
+    scorer_model: str = DEFAULT_MODEL
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -154,8 +157,11 @@ class Settings:
             region=os.environ.get("AWS_REGION", "us-east-2"),
             sender=os.environ.get("DIGEST_SENDER", "jobs@lubobali.com"),
             recipient=os.environ.get("DIGEST_RECIPIENT", "lubobali23@gmail.com"),
-            max_age_days=int(os.environ.get("COLD_START_MAX_AGE_DAYS", "30")),
+            max_age_days=int(os.environ.get("COLD_START_MAX_AGE_DAYS", "14")),
             max_score_per_run=int(os.environ.get("MAX_SCORE_PER_RUN", "200")),
+            # `or` not the 2nd arg: an empty SCORER_MODEL (Terraform sets "" to mean "unset") must
+            # fall through to the code default, not become a blank model id.
+            scorer_model=os.environ.get("SCORER_MODEL") or DEFAULT_MODEL,
         )
 
 
@@ -177,7 +183,7 @@ def run(
 
     sources = to_fetchers(boards) if boards is not None else to_fetchers()
     store = JobStore(table_name=settings.table_name, region=settings.region)
-    scorer = Scorer(api_key=settings.openrouter_key, profile=profile)
+    scorer = Scorer(api_key=settings.openrouter_key, profile=profile, model=settings.scorer_model)
 
     result = run_pipeline(
         sources,

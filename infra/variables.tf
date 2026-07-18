@@ -90,9 +90,19 @@ variable "max_score_per_run" {
 }
 
 variable "max_age_days" {
-  description = "Cold-start guard: skip postings older than this (unknown-date kept). Freshness cut."
+  description = "Cold-start guard: skip postings older than this (unknown-date kept). 14 keeps the cold-start affordable."
   type        = number
-  default     = 30
+  default     = 14
+}
+
+variable "scorer_model" {
+  description = <<-EOT
+    OpenRouter model slug for the LLM scorer. Measured at ~$0.012/job on Sonnet 4.5; Haiku is ~1/3
+    that. Left as Sonnet until Haiku is validated on the gold set — flip here once it is, no code
+    change. Blank string means "use the code default".
+  EOT
+  type        = string
+  default     = "" # empty -> Lambda env omits it -> runner uses scoring.DEFAULT_MODEL
 }
 
 variable "log_retention_days" {

@@ -19,6 +19,7 @@ from aws_job_streamer.runner import (
     load_dotenv,
     load_profile,
 )
+from aws_job_streamer.scoring import DEFAULT_MODEL
 
 
 def _result(**overrides: int) -> PipelineResult:
@@ -147,13 +148,29 @@ class TestSettings:
     def test_cold_start_guard_is_on_by_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """The scheduled run must be budget-safe without any extra config."""
         monkeypatch.setenv("OPENROUTER_API_KEY", "k")
-        for var in ("COLD_START_MAX_AGE_DAYS", "MAX_SCORE_PER_RUN"):
+        for var in ("COLD_START_MAX_AGE_DAYS", "MAX_SCORE_PER_RUN", "SCORER_MODEL"):
             monkeypatch.delenv(var, raising=False)
 
         settings = Settings.from_env()
 
-        assert settings.max_age_days == 30
+        assert settings.max_age_days == 14  # freshness cut, to bound the cold-start volume
         assert settings.max_score_per_run == 200
+
+    def test_scorer_model_is_configurable(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The model is a cost lever (Haiku ~1/3 of Sonnet); overridable without a code change."""
+        monkeypatch.setenv("OPENROUTER_API_KEY", "k")
+        monkeypatch.setenv("SCORER_MODEL", "anthropic/claude-haiku-4.5")
+
+        assert Settings.from_env().scorer_model == "anthropic/claude-haiku-4.5"
+
+    def test_an_empty_scorer_model_falls_through_to_the_default(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Terraform sets SCORER_MODEL='' to mean 'unset'; it must not become a blank model id."""
+        monkeypatch.setenv("OPENROUTER_API_KEY", "k")
+        monkeypatch.setenv("SCORER_MODEL", "")
+
+        assert Settings.from_env().scorer_model == DEFAULT_MODEL
 
     def test_env_overrides_defaults(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("OPENROUTER_API_KEY", "k")
