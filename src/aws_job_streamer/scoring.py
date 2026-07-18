@@ -29,7 +29,12 @@ import httpx
 from aws_job_streamer.models import Job
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-DEFAULT_MODEL = "anthropic/claude-sonnet-4.5"
+DEFAULT_MODEL = "anthropic/claude-haiku-4.5"
+"""Haiku, not Sonnet — chosen 2026-07-18 on cost + a live A/B. Measured ~$0.012/job on Sonnet put
+steady-state at ~$18/mo, over the $10 budget; Haiku is ~1/3 that (~$6/mo). On a 9-job validation
+(strong TARGETs, off-target PUNTs, a negative) Haiku matched Sonnet's email/no-email floor decision
+8/9 — it compresses absolute scores toward the middle but preserves the >=65 classification that
+shapes the digest. Override per-run with SCORER_MODEL (e.g. back to sonnet-4.5) if quality slips."""
 
 MIN_SCORE = 0
 MAX_SCORE = 100
