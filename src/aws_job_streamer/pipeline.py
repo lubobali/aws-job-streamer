@@ -128,7 +128,7 @@ def run_pipeline(  # noqa: PLR0913 — each arg is an injected seam or a real tu
     ranked = rank(scored, profile=profile)
     store.save_new(ranked)
 
-    overrides: dict[str, int] = {}
+    overrides: dict[str, Any] = {}
     if min_score is not None:
         overrides["min_score"] = min_score
     if per_company is not None:
