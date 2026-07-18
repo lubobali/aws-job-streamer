@@ -77,7 +77,7 @@ class TestUsEligibilityOfTheRegion:
         assert is_us_eligible(jobs[AMERICAS].location) is True
 
     def test_a_region_locked_job_is_dropped(self, jobs: list[Any]) -> None:
-        """Most Remotive jobs are region-locked (52 "Brazil" in the probe) — not workable for him."""
+        """Most Remotive jobs are region-locked (52 "Brazil" in the probe), so not workable."""
         assert is_us_eligible(jobs[BRAZIL].location) is False
 
 
