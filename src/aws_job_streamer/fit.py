@@ -103,15 +103,26 @@ def for_digest(
     limit: int = _DEFAULT_DIGEST_LIMIT,
     min_score: int = _DEFAULT_MIN_SCORE,
     per_company: int = _DEFAULT_PER_COMPANY,
+    workable_only: bool = True,
 ) -> list[RankedJob]:
-    """Return the top `limit` RANKED jobs (score >= `min_score`, <= `per_company` each) to email.
+    """Return the top `limit` RANKED jobs to email — strong, varied, and in a location he can take.
 
-    Three explicit filters, never silent drops: skipped jobs, below-floor jobs, and a company's
-    surplus are excluded here, not in `rank()`, so the full ranking stays inspectable. The floor
-    keeps weak matches out of the inbox; the per-company cap keeps one employer from flooding it.
-    Both trim from the email while leaving everything in the record.
+    Four explicit filters, never silent drops (the full ranking keeps everything, inspectable):
+      * `status` — skipped jobs never email.
+      * `min_score` — the 65 floor keeps weak matches out of the inbox.
+      * `workable_only` — a job he cannot take (OTHER_US: onsite/hybrid in a city he won't
+        relocate to) is NOT emailed. He should never have to open a link to discover the location
+        is wrong. It stays in the ranking; the accepted cost is the rare onsite role that secretly
+        allows remote (he catches those by hand). Everything remote / target-metro / Chicago-bridge
+        emails normally.
+      * `per_company` — the cap stops one employer flooding it.
     """
-    strong = [r for r in ranked if r.status is Status.RANKED and r.scored.score >= min_score]
+    def keep(r: RankedJob) -> bool:
+        if r.status is not Status.RANKED or r.scored.score < min_score:
+            return False
+        return not (workable_only and r.location_tier is Tier.OTHER_US)
+
+    strong = [r for r in ranked if keep(r)]
     unique = _collapse_duplicate_roles(strong)
     return _cap_per_company(unique, per_company)[:limit]
 

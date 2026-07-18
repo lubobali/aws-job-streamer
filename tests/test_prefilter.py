@@ -169,6 +169,17 @@ class TestFalsePositiveTraps:
         """ "CAN" must not match the state code "CA" — word boundaries matter."""
         assert is_us_eligible("Ontario, CAN") is False
 
+    def test_workday_canada_country_prefix_is_dropped(self) -> None:
+        """Snowflake/Workday format "CA-Ontario-Toronto" is Canada — the leading CA is the country
+        code, not California. It leaked a Toronto job into a real digest until this was handled."""
+        assert is_us_eligible("CA-Ontario-Toronto") is False
+        assert is_us_eligible("CA-British Columbia-Vancouver") is False
+
+    def test_workday_us_country_prefix_is_kept(self) -> None:
+        """The mirror format "US-CA-Menlo Park" IS genuinely California — must not be dropped."""
+        assert is_us_eligible("US-CA-Menlo Park") is True
+        assert is_us_eligible("US-NY-New York") is True
+
     def test_california_still_reads_as_california(self) -> None:
         assert is_us_eligible("San Francisco, CA") is True
 

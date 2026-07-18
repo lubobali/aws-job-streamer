@@ -396,6 +396,42 @@ class TestPerCompanyCap:
         assert len(digest) == 4
 
 
+class TestDigestWorkableOnly:
+    """The email must contain only locations he can actually take — he should never open a link to
+    find out it is onsite in a city he won't move to. OTHER_US (onsite/hybrid elsewhere) is kept in
+    the full ranking but not emailed; remote / target-metro / Chicago all email normally."""
+
+    def test_an_onsite_elsewhere_job_is_not_emailed(self) -> None:
+        sf = a_scored(score=92, location="San Francisco, CA", remote=False, workplace="onsite")
+
+        assert for_digest(rank([sf], profile=PROFILE)) == []
+
+    def test_a_remote_job_is_emailed(self) -> None:
+        remote = a_scored(score=92, workplace="remote")
+
+        assert len(for_digest(rank([remote], profile=PROFILE))) == 1
+
+    def test_a_chicago_bridge_job_is_emailed(self) -> None:
+        chi = a_scored(score=80, location="Chicago, IL", remote=False, workplace="onsite")
+
+        assert len(for_digest(rank([chi], profile=PROFILE))) == 1
+
+    def test_workable_jobs_win_the_slots_over_unworkable_ones(self) -> None:
+        """A batch with both: only the workable ones reach the inbox, even if scored lower."""
+        sf = a_scored(score=95, location="San Francisco, CA", remote=False, workplace="onsite",
+                      source_id="sf")
+        remote = a_scored(score=70, source_id="remote", workplace="remote")
+
+        digest = for_digest(rank([sf, remote], profile=PROFILE))
+
+        assert [r.scored.job.source_id for r in digest] == ["remote"]
+
+    def test_it_can_be_turned_off(self) -> None:
+        sf = a_scored(score=92, location="San Francisco, CA", remote=False, workplace="onsite")
+
+        assert len(for_digest(rank([sf], profile=PROFILE), workable_only=False)) == 1
+
+
 class TestCollapseDuplicateRoles:
     """A company can post the same role twice under different IDs (Lithic did: two 'Senior
     Software Engineer, Data Platform', both 95). Layer-1 dedup keys on source+id, so both slip

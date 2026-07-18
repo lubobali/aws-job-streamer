@@ -33,6 +33,11 @@ _US_SIGNAL = re.compile(
 )
 """Positive proof a posting is open somewhere in the US."""
 
+_CANADA_PREFIX = re.compile(r"^\s*CA-", re.IGNORECASE)
+"""Workday's country-first format: "CA-Ontario-Toronto" is CANADA, not California. The "CA" here
+is the country code, and it wrongly triggered the California US-signal, so a Toronto job leaked
+into a digest. "US-CA-Menlo Park" (US first) and "San Francisco, CA" (comma) are unaffected."""
+
 _FOREIGN_SIGNAL = re.compile(
     # Countries and territories, as whole words.
     r"\b(?:UK|United Kingdom|England|Scotland|Ireland|IE|Australia|Japan|India|Germany|DEU"
@@ -80,11 +85,17 @@ def is_us_eligible(location: str | None) -> bool:
     True
     >>> is_us_eligible("Ontario, CAN")             # CAN is not California
     False
+    >>> is_us_eligible("CA-Ontario-Toronto")       # Workday: CA = Canada country code, not Calif.
+    False
+    >>> is_us_eligible("US-CA-Menlo Park")          # US first -> genuinely California
+    True
     >>> is_us_eligible(None)
     True
     """
     if not location:
         return True
+    if _CANADA_PREFIX.match(location):
+        return False
     if _US_SIGNAL.search(location):
         return True
     return not _FOREIGN_SIGNAL.search(location)
