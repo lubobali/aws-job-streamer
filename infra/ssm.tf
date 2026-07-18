@@ -53,3 +53,25 @@ resource "aws_ssm_parameter" "openrouter_api_key" {
     ignore_changes = [value]
   }
 }
+
+resource "aws_ssm_parameter" "usajobs_api_key" {
+  name        = "${local.ssm_prefix}/usajobs/api_key"
+  description = "USAJobs Authorization-Key (free federal jobs API). Read by the Lambda at runtime."
+  type        = "SecureString"
+  value       = "PLACEHOLDER — set with: aws ssm put-parameter --overwrite"
+
+  lifecycle {
+    ignore_changes = [value]
+  }
+}
+
+resource "aws_ssm_parameter" "usajobs_email" {
+  name        = "${local.ssm_prefix}/usajobs/email"
+  description = "Email USAJobs requires as the User-Agent. Not secret, but kept with its key."
+  type        = "String"
+  value       = "PLACEHOLDER — set with: aws ssm put-parameter --overwrite"
+
+  lifecycle {
+    ignore_changes = [value]
+  }
+}

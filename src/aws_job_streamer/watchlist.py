@@ -16,7 +16,15 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from functools import partial
 
-from aws_job_streamer.fetchers import adzuna, ashby, greenhouse, lever, remotive, workday
+from aws_job_streamer.fetchers import (
+    adzuna,
+    ashby,
+    greenhouse,
+    lever,
+    remotive,
+    usajobs,
+    workday,
+)
 from aws_job_streamer.fetchers.workday import WorkdayBoard
 from aws_job_streamer.models import Job
 
@@ -198,7 +206,56 @@ def workday_fetchers() -> list[Fetcher]:
     ]
 
 
+# USAJobs = the federal government's official API, his citizenship MOAT and a category nothing else
+# covers. Every posting is federal, so — like Adzuna — it is targeted at his WORKABLE scopes (his
+# metros + remote), because most federal jobs are onsite at a facility and would be filtered out.
+_USAJOBS_KEYWORDS: tuple[str, ...] = ("data engineer", "artificial intelligence")
+_USAJOBS_SCOPES: tuple[tuple[str | None, int | None, bool], ...] = (
+    ("Chicago, Illinois", 40, False),  # his bridge
+    ("Tampa, Florida", 60, False),  # his target metro (covers Sarasota/Venice)
+    (None, None, True),  # nationwide, remote-only
+)
+
+
+@dataclass(frozen=True, slots=True)
+class UsaJobsQuery:
+    """One USAJobs search: a keyword, optionally scoped to a metro or to remote-only."""
+
+    keyword: str
+    location_name: str | None
+    radius: int | None
+    remote_only: bool
+
+    def to_fetcher(self) -> Fetcher:
+        return partial(
+            usajobs.fetch_jobs,
+            self.keyword,
+            location_name=self.location_name,
+            radius=self.radius,
+            remote_only=self.remote_only,
+            max_results=25,
+        )
+
+
+USAJOBS_QUERIES: tuple[UsaJobsQuery, ...] = tuple(
+    UsaJobsQuery(keyword=kw, location_name=loc, radius=rad, remote_only=rem)
+    for kw in _USAJOBS_KEYWORDS
+    for (loc, rad, rem) in _USAJOBS_SCOPES
+)
+
+
+def usajobs_fetchers(queries: Sequence[UsaJobsQuery] = USAJOBS_QUERIES) -> list[Fetcher]:
+    """Build a USAJobs fetcher per query. Needs USAJOBS_API_KEY/USAJOBS_EMAIL in the environment."""
+    return [q.to_fetcher() for q in queries]
+
+
 def all_sources() -> list[Fetcher]:
     """Every source a full run pulls: ATS watchlist + Remotive (remote) + Adzuna (local metros) +
-    Workday (gov/defense moat)."""
-    return to_fetchers() + remotive_fetchers() + adzuna_fetchers() + workday_fetchers()
+    Workday (gov/defense moat) + USAJobs (federal moat)."""
+    return (
+        to_fetchers()
+        + remotive_fetchers()
+        + adzuna_fetchers()
+        + workday_fetchers()
+        + usajobs_fetchers()
+    )

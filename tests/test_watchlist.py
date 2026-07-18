@@ -5,14 +5,17 @@ from __future__ import annotations
 from aws_job_streamer.watchlist import (
     ADZUNA_QUERIES,
     REMOTIVE_SEARCHES,
+    USAJOBS_QUERIES,
     WATCHLIST,
     WORKDAY_SEARCHES,
     AdzunaQuery,
     Board,
+    UsaJobsQuery,
     adzuna_fetchers,
     all_sources,
     remotive_fetchers,
     to_fetchers,
+    usajobs_fetchers,
     workday_fetchers,
 )
 
@@ -116,6 +119,22 @@ class TestWorkdaySources:
         assert fetcher.args[1] in WORKDAY_SEARCHES  # type: ignore[attr-defined]
 
 
+class TestUsaJobsSources:
+    def test_scopes_are_his_metros_plus_remote(self) -> None:
+        """Federal search targeted only where he can work: Chicago, Tampa, or remote-only."""
+        for q in USAJOBS_QUERIES:
+            assert q.location_name in ("Chicago, Illinois", "Tampa, Florida") or q.remote_only
+
+    def test_binds_keyword_and_scope(self) -> None:
+        fetcher = UsaJobsQuery("data engineer", "Tampa, Florida", 60, False).to_fetcher()
+
+        assert fetcher.args[0] == "data engineer"  # type: ignore[attr-defined]
+        assert fetcher.keywords["location_name"] == "Tampa, Florida"  # type: ignore[attr-defined]
+
+    def test_one_fetcher_per_query(self) -> None:
+        assert len(usajobs_fetchers()) == len(USAJOBS_QUERIES)
+
+
 class TestAllSources:
     def test_combines_every_source_family(self) -> None:
         assert len(all_sources()) == (
@@ -123,4 +142,5 @@ class TestAllSources:
             + len(REMOTIVE_SEARCHES)
             + len(ADZUNA_QUERIES)
             + len(workday_fetchers())
+            + len(USAJOBS_QUERIES)
         )
