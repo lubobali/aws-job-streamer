@@ -22,6 +22,12 @@ from aws_job_streamer import runner
 
 _OPENROUTER_SSM_NAME = os.environ.get("OPENROUTER_SSM_NAME", "/job-streamer/openrouter/api_key")
 
+# Adzuna credentials (local search source). Names match ssm.tf; values set out of band.
+_SSM_SECRETS = {
+    "ADZUNA_APP_ID": os.environ.get("ADZUNA_APP_ID_SSM_NAME", "/job-streamer/adzuna/app_id"),
+    "ADZUNA_APP_KEY": os.environ.get("ADZUNA_APP_KEY_SSM_NAME", "/job-streamer/adzuna/app_key"),
+}
+
 
 def _load_secret_into_env(ssm_name: str, env_key: str, region: str) -> None:
     """Fetch a SecureString from SSM into the environment, unless it is already set.
@@ -48,6 +54,8 @@ def handler(event: Any, context: Any) -> dict[str, Any]:  # noqa: ANN401 — Lam
 
     region = os.environ.get("AWS_REGION", "us-east-2")
     _load_secret_into_env(_OPENROUTER_SSM_NAME, "OPENROUTER_API_KEY", region)
+    for env_key, ssm_name in _SSM_SECRETS.items():
+        _load_secret_into_env(ssm_name, env_key, region)
 
     result, digest_result = runner.run()
     c = result.counts

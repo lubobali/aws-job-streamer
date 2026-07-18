@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 from aws_job_streamer.watchlist import (
+    ADZUNA_QUERIES,
     REMOTIVE_SEARCHES,
     WATCHLIST,
+    AdzunaQuery,
     Board,
+    adzuna_fetchers,
     all_sources,
     remotive_fetchers,
     to_fetchers,
@@ -82,6 +85,25 @@ class TestRemotiveSources:
         assert len(remotive_fetchers()) == len(REMOTIVE_SEARCHES)
 
 
+class TestAdzunaSources:
+    def test_queries_only_target_his_workable_metros(self) -> None:
+        """Adzuna is LOCAL search — it must only hunt places he can work, never a random US city."""
+        wheres = {q.where for q in ADZUNA_QUERIES}
+        assert wheres == {"Sarasota", "Chicago"}
+
+    def test_binds_phrase_where_and_distance(self) -> None:
+        fetcher = AdzunaQuery("data engineer", "Sarasota", 60).to_fetcher()
+
+        assert fetcher.args[0] == "data engineer"  # type: ignore[attr-defined]
+        assert fetcher.keywords["where"] == "Sarasota"  # type: ignore[attr-defined]
+        assert fetcher.keywords["distance"] == 60  # type: ignore[attr-defined]
+
+    def test_one_fetcher_per_query(self) -> None:
+        assert len(adzuna_fetchers()) == len(ADZUNA_QUERIES)
+
+
 class TestAllSources:
-    def test_combines_ats_boards_and_remotive_searches(self) -> None:
-        assert len(all_sources()) == len(WATCHLIST) + len(REMOTIVE_SEARCHES)
+    def test_combines_every_source_family(self) -> None:
+        assert len(all_sources()) == (
+            len(WATCHLIST) + len(REMOTIVE_SEARCHES) + len(ADZUNA_QUERIES)
+        )

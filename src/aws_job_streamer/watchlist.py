@@ -16,7 +16,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from functools import partial
 
-from aws_job_streamer.fetchers import ashby, greenhouse, lever, remotive
+from aws_job_streamer.fetchers import adzuna, ashby, greenhouse, lever, remotive
 from aws_job_streamer.models import Job
 
 Fetcher = Callable[[], list[Job]]
@@ -125,6 +125,53 @@ def remotive_fetchers(searches: Sequence[str] = REMOTIVE_SEARCHES) -> list[Fetch
     return [partial(remotive.fetch_jobs, term) for term in searches]
 
 
+# Adzuna geocodes every posting to a physical city, so its unique value is LOCAL search in the
+# metros he can work — which no ATS board can do (they are per-company, not per-place). We point it
+# ONLY at his workable metros (Tampa/Sarasota target + Chicago bridge); remote is Remotive's job.
+# Probe-confirmed: a Sarasota search returns Tampa TARGET_METRO jobs; a Chicago search Chicagoland.
+_ADZUNA_LOCATIONS: tuple[tuple[str, int], ...] = (
+    ("Sarasota", 60),  # covers Venice, Tampa, Bradenton, St. Petersburg — his target metro
+    ("Chicago", 40),  # covers Chicagoland — his bridge
+)
+_ADZUNA_PHRASES: tuple[str, ...] = (
+    "data engineer",
+    "AI engineer",
+    "machine learning engineer",
+    "data platform",
+)
+
+
+@dataclass(frozen=True, slots=True)
+class AdzunaQuery:
+    """One Adzuna local search: a phrase within `distance` miles of `where`."""
+
+    phrase: str
+    where: str
+    distance: int
+
+    def to_fetcher(self) -> Fetcher:
+        return partial(
+            adzuna.fetch_jobs,
+            self.phrase,
+            where=self.where,
+            distance=self.distance,
+            max_days_old=30,
+            max_results=25,
+        )
+
+
+ADZUNA_QUERIES: tuple[AdzunaQuery, ...] = tuple(
+    AdzunaQuery(phrase, where, dist)
+    for where, dist in _ADZUNA_LOCATIONS
+    for phrase in _ADZUNA_PHRASES
+)
+
+
+def adzuna_fetchers(queries: Sequence[AdzunaQuery] = ADZUNA_QUERIES) -> list[Fetcher]:
+    """Build an Adzuna fetcher per local query. Needs ADZUNA_APP_ID/APP_KEY in the environment."""
+    return [q.to_fetcher() for q in queries]
+
+
 def all_sources() -> list[Fetcher]:
-    """Every source a full scheduled run pulls: the ATS watchlist plus the Remotive searches."""
-    return to_fetchers() + remotive_fetchers()
+    """Every source a full run pulls: ATS watchlist + Remotive (remote) + Adzuna (local metros)."""
+    return to_fetchers() + remotive_fetchers() + adzuna_fetchers()
