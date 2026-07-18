@@ -52,6 +52,23 @@ class TestAssessRun:
 
         assert summary.health is RunHealth.WARN
 
+    def test_all_scoring_failing_is_an_error(self) -> None:
+        """A live 402 made every score fail; the per-job skip left scored=0 but health OK. It must
+        read as ERROR — a total scoring outage is a broken run, not a quiet one."""
+        summary = assess_run(
+            _result(new=200, deferred=0, scored=0), source_count=6, digest_result=None
+        )
+
+        assert summary.health is RunHealth.ERROR
+
+    def test_a_normal_nothing_new_run_is_still_ok(self) -> None:
+        """0 scored because 0 attempted (all deduped) is the normal cheap run, NOT an outage."""
+        summary = assess_run(
+            _result(new=0, deferred=0, scored=0), source_count=6, digest_result=None
+        )
+
+        assert summary.health is RunHealth.OK
+
     def test_zero_fetched_without_failures_is_a_warning(self) -> None:
         """No errors but nothing came back — a board shape change hides exactly like this."""
         summary = assess_run(_result(fetched=0), source_count=6, digest_result=None)

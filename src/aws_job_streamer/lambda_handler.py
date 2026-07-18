@@ -36,7 +36,7 @@ def _load_secret_into_env(ssm_name: str, env_key: str, region: str) -> None:
     os.environ[env_key] = value
 
 
-def handler(event: Any, context: Any) -> dict[str, Any]:  # noqa: ANN401, ARG001 — Lambda contract
+def handler(event: Any, context: Any) -> dict[str, Any]:  # noqa: ANN401 — Lambda event/context
     """Run one full cycle and email any new strong matches. Returns a summary for the logs/console.
 
     Raising propagates to Lambda as an invocation error, which the CloudWatch Errors alarm catches

@@ -79,8 +79,14 @@ def assess_run(
     emailed = digest_result.count if digest_result and digest_result.sent else 0
     message_id = digest_result.message_id if digest_result else None
 
+    attempted = c.new - c.deferred  # jobs actually handed to the scorer this run
     if source_count and c.source_failures >= source_count:
         health, headline = RunHealth.ERROR, "all sources failed — fetched nothing"
+    elif attempted > 0 and c.scored == 0:
+        # The graceful per-job skip (one bad JD must not lose a run) hides a TOTAL scoring outage:
+        # if every attempted score failed, the LLM is down or out of credit (a live 402 did this).
+        # That is a broken run, not a quiet one — flag it loudly.
+        health, headline = RunHealth.ERROR, f"scored 0 of {attempted} — scorer down (API/credit?)"
     elif c.source_failures > 0:
         health, headline = RunHealth.WARN, f"{c.source_failures}/{source_count} sources failed"
     elif c.fetched == 0:
