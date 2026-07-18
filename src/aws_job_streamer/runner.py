@@ -22,7 +22,7 @@ from aws_job_streamer.dedup import JobStore
 from aws_job_streamer.digest import DigestMailer, DigestResult, send_digest
 from aws_job_streamer.pipeline import PipelineResult, run_pipeline
 from aws_job_streamer.scoring import DEFAULT_MODEL, Scorer
-from aws_job_streamer.watchlist import Board, to_fetchers
+from aws_job_streamer.watchlist import Board, all_sources, to_fetchers
 
 _log = logging.getLogger("aws_job_streamer")
 
@@ -181,7 +181,7 @@ def run(
     settings = Settings.from_env()
     profile = load_profile()
 
-    sources = to_fetchers(boards) if boards is not None else to_fetchers()
+    sources = to_fetchers(boards) if boards is not None else all_sources()
     store = JobStore(table_name=settings.table_name, region=settings.region)
     scorer = Scorer(api_key=settings.openrouter_key, profile=profile, model=settings.scorer_model)
 

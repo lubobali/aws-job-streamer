@@ -16,7 +16,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from functools import partial
 
-from aws_job_streamer.fetchers import ashby, greenhouse, lever
+from aws_job_streamer.fetchers import ashby, greenhouse, lever, remotive
 from aws_job_streamer.models import Job
 
 Fetcher = Callable[[], list[Job]]
@@ -106,3 +106,25 @@ def to_fetchers(boards: Sequence[Board] = WATCHLIST) -> list[Fetcher]:
     Each fetcher isolates its own failures inside the pipeline, so one dead board never sinks a run.
     """
     return [board.to_fetcher() for board in boards]
+
+
+# Remotive is keyword search, not a company board, so it is driven by queries rather than slugs.
+# Every result is remote → it feeds the workable digest directly ("catch more, miss nothing").
+# Kept focused: broad enough to cover his lane, few enough that overlap/cost stay small.
+REMOTIVE_SEARCHES: tuple[str, ...] = (
+    "data engineer",
+    "AI engineer",
+    "machine learning engineer",
+    "data platform",
+    "backend engineer",
+)
+
+
+def remotive_fetchers(searches: Sequence[str] = REMOTIVE_SEARCHES) -> list[Fetcher]:
+    """Build a Remotive fetcher per search term."""
+    return [partial(remotive.fetch_jobs, term) for term in searches]
+
+
+def all_sources() -> list[Fetcher]:
+    """Every source a full scheduled run pulls: the ATS watchlist plus the Remotive searches."""
+    return to_fetchers() + remotive_fetchers()

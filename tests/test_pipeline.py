@@ -163,11 +163,6 @@ class TestCostGuard:
 
     OLD = datetime(2026, 5, 1, 12, 0, tzinfo=UTC)  # ~76 days before NOW
 
-    def _run(self, sources: Sequence[Fetcher], **kw: object) -> PipelineResult:
-        return run_pipeline(
-            sources, store=FakeStore(), scorer=FakeScorer(), profile=PROFILE, now=lambda: NOW, **kw
-        )
-
     def test_no_guard_scores_everything(self) -> None:
         scorer = FakeScorer()
         run_pipeline(

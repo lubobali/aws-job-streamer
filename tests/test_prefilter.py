@@ -155,6 +155,34 @@ class TestUsEligibleDrops:
         assert is_us_eligible(location) is False
 
 
+class TestRemoteRegions:
+    """Remotive's `candidate_required_location` is a region, not a city. A US-inclusive scope is
+    workable; a region-locked one is not. Added when Remotive (Phase B1) came online."""
+
+    @pytest.mark.parametrize(
+        "location",
+        [
+            "Worldwide",
+            "Anywhere",
+            "Americas",
+            "North America",
+            "Northern America",
+            "USA, Canada, USA timezones",
+            "Americas, Europe, Israel",  # Americas includes the US -> keep despite Israel/Europe
+            "Northern America, LATAM, Europe, APAC",
+        ],
+    )
+    def test_us_inclusive_remote_scopes_are_kept(self, location: str) -> None:
+        assert is_us_eligible(location) is True
+
+    @pytest.mark.parametrize(
+        "location",
+        ["Brazil", "Mexico", "Uruguay", "LATAM, Europe", "Europe, UK, Germany, France"],
+    )
+    def test_region_locked_non_us_scopes_are_dropped(self, location: str) -> None:
+        assert is_us_eligible(location) is False
+
+
 class TestFalsePositiveTraps:
     """US cities that share a name with a foreign one. The US signal must win."""
 

@@ -2,7 +2,14 @@
 
 from __future__ import annotations
 
-from aws_job_streamer.watchlist import WATCHLIST, Board, to_fetchers
+from aws_job_streamer.watchlist import (
+    REMOTIVE_SEARCHES,
+    WATCHLIST,
+    Board,
+    all_sources,
+    remotive_fetchers,
+    to_fetchers,
+)
 
 
 class TestWatchlist:
@@ -56,3 +63,25 @@ class TestToFetchers:
 
     def test_defaults_to_the_full_watchlist(self) -> None:
         assert len(to_fetchers()) == len(WATCHLIST)
+
+
+class TestRemotiveSources:
+    def test_one_fetcher_per_search(self) -> None:
+        fetchers = remotive_fetchers(["data engineer", "AI engineer"])
+
+        assert len(fetchers) == 2
+        assert all(callable(f) for f in fetchers)
+
+    def test_binds_the_search_term(self) -> None:
+        fetcher = remotive_fetchers(["data platform"])[0]
+
+        assert fetcher.args[0] == "data platform"  # type: ignore[attr-defined]
+
+    def test_default_searches_cover_his_lane(self) -> None:
+        assert "data engineer" in REMOTIVE_SEARCHES
+        assert len(remotive_fetchers()) == len(REMOTIVE_SEARCHES)
+
+
+class TestAllSources:
+    def test_combines_ats_boards_and_remotive_searches(self) -> None:
+        assert len(all_sources()) == len(WATCHLIST) + len(REMOTIVE_SEARCHES)

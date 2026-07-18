@@ -28,10 +28,14 @@ _US_SIGNAL = re.compile(
     # why every alternative is anchored with \b.
     r"\b(?:A[LKZR]|C[AOT]|D[CE]|FL|GA|HI|I[ADLN]|K[SY]|LA|M[ADEINOST]|N[CDEHJMVY]"
     r"|O[HKR]|PA|RI|S[CD]|T[NX]|UT|V[AT]|W[AIVY])\b"
-    r"|\bUSA?\b|\bU\.S\.A?\.?|United States|\bD\.C\.",
+    r"|\bUSA?\b|\bU\.S\.A?\.?|United States|\bD\.C\."
+    # Remote-scope regions that INCLUDE the US (added for Remotive's candidate_required_location,
+    # which is a region not a city). A US worker qualifies for a "Worldwide"/"Americas" remote
+    # role; "Brazil"/"Europe"-only ones carry no US scope and fall through to the foreign check.
+    r"|Worldwide|\bAnywhere\b|North(?:ern)? America|\bAmericas\b",
     re.IGNORECASE,
 )
-"""Positive proof a posting is open somewhere in the US."""
+"""Positive proof a posting is open somewhere in the US — including a US-inclusive remote scope."""
 
 _CANADA_PREFIX = re.compile(r"^\s*CA-", re.IGNORECASE)
 """Workday's country-first format: "CA-Ontario-Toronto" is CANADA, not California. The "CA" here
@@ -44,7 +48,11 @@ _FOREIGN_SIGNAL = re.compile(
     r"|France|Spain|Italy|Netherlands|Belgium|Sweden|SE|Norway|Denmark|Finland|Poland"
     r"|Switzerland|CH|Austria|Portugal|Greece|Turkey|Israel|UAE|Kenya|Nigeria|Egypt"
     r"|Singapore|Taiwan|China|Hong Kong|South Korea|Korea|Indonesia|Malaysia|Thailand"
-    r"|Vietnam|Philippines|Brazil|Argentina|Chile|Colombia|Mexico|Canada|CAN|ON|BC|QC)\b"
+    r"|Vietnam|Philippines|Brazil|Argentina|Chile|Colombia|Mexico|Canada|CAN|ON|BC|QC"
+    r"|Uruguay|Peru|Ecuador|Venezuela|Bolivia|Paraguay"
+    # Region locks (Remotive's candidate_required_location). US-inclusive scopes win FIRST in
+    # is_us_eligible, so "Americas, Europe" stays kept; only a scope with no US region hits these.
+    r"|Europe|EMEA|APAC|LATAM|EU)\b"
     # Foreign cities. Half the foreign postings on real boards name no country at all — just
     # "Berlin", "Milan", "Jakarta". A country-only list would let every one of them through.
     r"|London|Berlin|Paris|Milan|Rome|Munich|Frankfurt|Hamburg|Dublin|Amsterdam|Brussels"
