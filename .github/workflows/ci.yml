@@ -1,0 +1,36 @@
+name: CI
+
+# Lint + type-check + full test suite on every push and PR. The badge in the README
+# points at this workflow, so a red run is visible on the repo's front page.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    name: lint + type-check + tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Create the venv (Python 3.13, same as prod/Lambda)
+        run: uv venv --python 3.13
+
+      - name: Install dependencies
+        run: uv pip install -r requirements-dev.txt
+
+      - name: Lint (ruff)
+        run: uv run ruff check src/ tests/
+
+      - name: Tests (pytest — random order, warnings are errors)
+        run: uv run pytest
+
+      # ty is a pre-1.0 alpha; run it for signal but don't let it red the badge on its own.
+      - name: Type-check (ty)
+        run: uv run ty check src/
+        continue-on-error: true
