@@ -58,6 +58,15 @@ variable "schedule_expression" {
   default     = "rate(4 hours)"
 }
 
+variable "heartbeat_schedule" {
+  description = <<-EOT
+    When the daily "still alive" summary fires. cron(0 13 * * ? *) = 13:00 UTC ≈ 8am US Central, so
+    it lands first thing. Only active when schedule_enabled = true.
+  EOT
+  type        = string
+  default     = "cron(0 13 * * ? *)"
+}
+
 variable "schedule_enabled" {
   description = <<-EOT
     Whether the EventBridge rule is ENABLED. Starts false so the Lambda can be deployed and

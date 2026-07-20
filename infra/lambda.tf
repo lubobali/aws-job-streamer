@@ -83,6 +83,14 @@ data "aws_iam_policy_document" "lambda_permissions" {
       values   = ["ssm.${data.aws_region.current.region}.amazonaws.com"]
     }
   }
+
+  # The daily heartbeat reads its own last-24h heartbeat lines via Logs Insights. Read-only query
+  # actions; GetQueryResults/StopQuery are resourceless so they cannot be scoped to the log group.
+  statement {
+    sid       = "HeartbeatLogInsights"
+    actions   = ["logs:StartQuery", "logs:GetQueryResults", "logs:StopQuery"]
+    resources = ["*"]
+  }
 }
 
 resource "aws_iam_role_policy" "lambda" {
@@ -152,4 +160,27 @@ resource "aws_lambda_permission" "events" {
   function_name = aws_lambda_function.poll.function_name
   principal     = "events.amazonaws.com"
   source_arn    = aws_cloudwatch_event_rule.schedule.arn
+}
+
+# ---- Daily heartbeat: one "still alive, here's the 24h summary" email, so silence is never scary. ----
+
+resource "aws_cloudwatch_event_rule" "daily_heartbeat" {
+  name                = "${var.project}-daily-heartbeat"
+  description         = "Fires once a day; the Lambda emails a 24h run summary instead of polling."
+  schedule_expression = var.heartbeat_schedule
+  state               = var.schedule_enabled ? "ENABLED" : "DISABLED"
+}
+
+resource "aws_cloudwatch_event_target" "daily_heartbeat" {
+  rule  = aws_cloudwatch_event_rule.daily_heartbeat.name
+  arn   = aws_lambda_function.poll.arn
+  input = jsonencode({ mode = "heartbeat" }) # tells the handler to summarize, not poll
+}
+
+resource "aws_lambda_permission" "daily_heartbeat" {
+  statement_id  = "AllowDailyHeartbeat"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.poll.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.daily_heartbeat.arn
 }

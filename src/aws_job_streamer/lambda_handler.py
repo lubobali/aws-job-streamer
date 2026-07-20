@@ -14,11 +14,13 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 from typing import Any
 
 import boto3
 
 from aws_job_streamer import runner
+from aws_job_streamer.daily_summary import parse_heartbeat, render_daily, summarize
 
 _OPENROUTER_SSM_NAME = os.environ.get("OPENROUTER_SSM_NAME", "/job-streamer/openrouter/api_key")
 
@@ -55,6 +57,12 @@ def handler(event: Any, context: Any) -> dict[str, Any]:  # noqa: ANN401 — Lam
     logging.getLogger("aws_job_streamer").setLevel(logging.INFO)
 
     region = os.environ.get("AWS_REGION", "us-east-2")
+
+    # A second EventBridge rule fires once a day with {"mode": "heartbeat"}: no pipeline, no LLM —
+    # just email a 24h summary so silence never reads as "is it broken?".
+    if isinstance(event, dict) and event.get("mode") == "heartbeat":
+        return _daily_heartbeat(region)
+
     _load_secret_into_env(_OPENROUTER_SSM_NAME, "OPENROUTER_API_KEY", region)
     for env_key, ssm_name in _SSM_SECRETS.items():
         _load_secret_into_env(ssm_name, env_key, region)
@@ -73,3 +81,46 @@ def handler(event: Any, context: Any) -> dict[str, Any]:  # noqa: ANN401 — Lam
         "emailed": digest_result.count if digest_result and digest_result.sent else 0,
         "message_id": digest_result.message_id if digest_result else None,
     }
+
+
+def _daily_heartbeat(region: str) -> dict[str, Any]:
+    """Read the last 24h of heartbeat lines from CloudWatch, summarize, and email it. No LLM."""
+    logs = boto3.client("logs", region_name=region)
+    function_name = os.environ.get("AWS_LAMBDA_FUNCTION_NAME", "aws-job-streamer-poll")
+    end = int(time.time())
+    query = logs.start_query(
+        logGroupName=f"/aws/lambda/{function_name}",
+        startTime=end - 86_400,
+        endTime=end,
+        queryString="fields @message | filter @message like /job-streamer run/ | limit 2000",
+    )
+    query_id = query["queryId"]
+    results: list[list[dict[str, str]]] = []
+    for _ in range(30):  # Logs Insights is async; a day of a small log group completes in seconds.
+        response = logs.get_query_results(queryId=query_id)
+        if response["status"] in ("Complete", "Failed", "Cancelled"):
+            results = response.get("results", [])
+            break
+        time.sleep(1)
+
+    rows = []
+    for row in results:
+        message = next((f["value"] for f in row if f["field"] == "@message"), "")
+        parsed = parse_heartbeat(message)
+        if parsed is not None:
+            rows.append(parsed)
+
+    model = os.environ.get("SCORER_MODEL") or "haiku"
+    per_score = 0.004 if "haiku" in model.lower() else 0.012
+    summary = summarize(rows, cost_per_score=per_score)
+    subject, html, text = render_daily(summary)
+
+    boto3.client("ses", region_name=region).send_email(
+        Source=os.environ["DIGEST_SENDER"],
+        Destination={"ToAddresses": [os.environ["DIGEST_RECIPIENT"]]},
+        Message={
+            "Subject": {"Data": subject},
+            "Body": {"Html": {"Data": html}, "Text": {"Data": text}},
+        },
+    )
+    return {"mode": "heartbeat", "runs": summary.runs, "emailed": summary.emailed}
