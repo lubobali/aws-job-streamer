@@ -71,6 +71,23 @@ class RunSummary:
         )
 
 
+# Rough $/score by model family (input-heavy prompt + short output), for the digest's spend line.
+# An estimate, labelled as one — the exact figure is on the OpenRouter dashboard.
+_COST_PER_SCORE = {"haiku": 0.004, "sonnet": 0.012}
+
+
+def _spend_note(result: PipelineResult, model: str) -> str:
+    """One honest line so he can see what his money bought this run."""
+    per = next((v for k, v in _COST_PER_SCORE.items() if k in model.lower()), 0.008)
+    cost = result.counts.scored * per
+    scored = result.counts.scored
+    return (
+        f"This run scored {scored} new job{'' if scored == 1 else 's'} in a location you can take "
+        f"and emailed the {result.counts.digest} that fit. Est. cost ~${cost:.2f} "
+        f"(dedup means each job is paid for once, ever)."
+    )
+
+
 def assess_run(
     result: PipelineResult, *, source_count: int, digest_result: DigestResult | None
 ) -> RunSummary:
@@ -200,7 +217,8 @@ def run(
         mailer = DigestMailer(
             sender=settings.sender, recipient=settings.recipient, region=settings.region
         )
-        digest_result = send_digest(result.digest, mailer=mailer, store=store)
+        note = _spend_note(result, settings.scorer_model)
+        digest_result = send_digest(result.digest, mailer=mailer, store=store, note=note)
 
     # Heartbeat: one structured line per run, at a level a CloudWatch alarm can watch (A3).
     summary = assess_run(result, source_count=len(sources), digest_result=digest_result)

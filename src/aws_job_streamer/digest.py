@@ -57,10 +57,11 @@ def render_subject(ranked: Sequence[RankedJob]) -> str:
     return f"{n} new job {noun} — aws-job-streamer"
 
 
-def render_text(ranked: Sequence[RankedJob]) -> str:
+def render_text(ranked: Sequence[RankedJob], *, note: str | None = None) -> str:
     """Plain-text alternative — for clients that block HTML and for deliverability.
 
-    No markup at all: a title with tags is shown verbatim as text, which is safe here.
+    No markup at all: a title with tags is shown verbatim as text, which is safe here. `note` is an
+    optional footer line (the run's spend summary), so he can see what his money bought.
     """
     lines = [f"{len(ranked)} new job matches — ranked best-fit first.", ""]
     for i, r in enumerate(ranked, 1):
@@ -73,13 +74,22 @@ def render_text(ranked: Sequence[RankedJob]) -> str:
         lines.append(f"   {job.url}")
         lines.append("")
     lines.append("You review and decide — aws-job-streamer never applies for you.")
+    if note:
+        lines.append("")
+        lines.append(note)
     return "\n".join(lines)
 
 
-def render_html(ranked: Sequence[RankedJob]) -> str:
+def render_html(ranked: Sequence[RankedJob], *, note: str | None = None) -> str:
     """The HTML digest. Inline-styled and self-contained (email clients strip <style> and block
-    external assets), mobile-first, and safe against untrusted job text."""
+    external assets), mobile-first, and safe against untrusted job text. `note` is an optional
+    footer line (the run's spend summary)."""
     rows = "".join(_html_row(r) for r in ranked)
+    note_html = (
+        f'<p style="margin:8px 0 0;color:#bbb;font-size:11px">{html.escape(note)}</p>'
+        if note
+        else ""
+    )
     return f"""\
 <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;\
 max-width:640px;margin:0 auto;color:#1a1a1a;padding:8px">
@@ -88,7 +98,7 @@ max-width:640px;margin:0 auto;color:#1a1a1a;padding:8px">
   <table style="width:100%;border-collapse:collapse">{rows}</table>
   <p style="margin:20px 0 0;color:#999;font-size:12px">
     You review and decide — aws-job-streamer surfaces and explains, it never applies for you.
-  </p>
+  </p>{note_html}
 </div>"""
 
 
@@ -233,16 +243,16 @@ class DigestMailer:
     region: str = "us-east-2"
     client: Any = None  # an injected boto3 SES client, untyped without stubs
 
-    def send(self, ranked: Sequence[RankedJob]) -> str:
-        """Render and send the digest. Returns the SES MessageId."""
+    def send(self, ranked: Sequence[RankedJob], *, note: str | None = None) -> str:
+        """Render and send the digest, returning the SES MessageId. `note` is the spend footer."""
         response = self._ses().send_email(
             Source=self.sender,
             Destination={"ToAddresses": [self.recipient]},
             Message={
                 "Subject": {"Data": render_subject(ranked)},
                 "Body": {
-                    "Html": {"Data": render_html(ranked)},
-                    "Text": {"Data": render_text(ranked)},
+                    "Html": {"Data": render_html(ranked, note=note)},
+                    "Text": {"Data": render_text(ranked, note=note)},
                 },
             },
         )
@@ -270,17 +280,21 @@ class _MarkEmailedStore(Protocol):
 
 
 def send_digest(
-    ranked: Sequence[RankedJob], *, mailer: DigestMailer, store: _MarkEmailedStore
+    ranked: Sequence[RankedJob],
+    *,
+    mailer: DigestMailer,
+    store: _MarkEmailedStore,
+    note: str | None = None,
 ) -> DigestResult:
     """Send the digest, then mark its jobs emailed. Skips entirely when there is nothing to send.
 
     The order is load-bearing: the mark only runs if `send` returned, so a failed send leaves the
     jobs as "new" and next run retries them. An empty digest sends no email — a "nothing today"
-    message is noise.
+    message is noise. `note` is an optional spend-summary footer.
     """
     if not ranked:
         return DigestResult(sent=False, count=0, message_id=None)
 
-    message_id = mailer.send(ranked)
+    message_id = mailer.send(ranked, note=note)
     store.mark_emailed([r.scored.job.job_id for r in ranked])
     return DigestResult(sent=True, count=len(ranked), message_id=message_id)

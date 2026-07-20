@@ -71,6 +71,21 @@ def a_ranked(  # noqa: PLR0913 — a builder; every field is an independent knob
     return RankedJob(scored=scored, location_tier=tier, status=Status.RANKED)
 
 
+class TestSpendNoteFooter:
+    def test_html_shows_the_note_when_given(self) -> None:
+        html = render_html([a_ranked()], note="This run scored 20 jobs. Est. cost ~$0.08.")
+
+        assert "Est. cost ~$0.08" in html
+
+    def test_html_omits_the_footer_when_no_note(self) -> None:
+        assert "Est. cost" not in render_html([a_ranked()])
+
+    def test_text_shows_the_note(self) -> None:
+        text = render_text([a_ranked()], note="This run scored 20 jobs. Est. cost ~$0.08.")
+
+        assert "Est. cost ~$0.08" in text
+
+
 class TestRenderHtml:
     def test_shows_the_core_fields(self) -> None:
         html = render_html(

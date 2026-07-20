@@ -15,6 +15,7 @@ from aws_job_streamer.pipeline import PipelineCounts, PipelineResult
 from aws_job_streamer.runner import (
     RunHealth,
     Settings,
+    _spend_note,
     assess_run,
     load_dotenv,
     load_profile,
@@ -89,6 +90,27 @@ class TestAssessRun:
         assert RunHealth.OK.log_level == logging.INFO
         assert RunHealth.WARN.log_level == logging.WARNING
         assert RunHealth.ERROR.log_level == logging.ERROR
+
+
+class TestSpendNote:
+    """The digest footer that shows him what his money bought — trust, not just a number."""
+
+    def test_reports_scored_emailed_and_haiku_cost(self) -> None:
+        note = _spend_note(_result(scored=50, digest=8), "anthropic/claude-haiku-4.5")
+
+        assert "50 new jobs" in note
+        assert "emailed the 8" in note
+        assert "$0.20" in note  # 50 * $0.004
+
+    def test_sonnet_costs_more_per_score(self) -> None:
+        note = _spend_note(_result(scored=50), "anthropic/claude-sonnet-4.5")
+
+        assert "$0.60" in note  # 50 * $0.012
+
+    def test_singular_one_job(self) -> None:
+        note = _spend_note(_result(scored=1, digest=1), "haiku")
+
+        assert "1 new job " in note  # no plural 's'
 
 
 class TestLoadDotenv:
