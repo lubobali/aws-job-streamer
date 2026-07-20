@@ -154,6 +154,46 @@ class TestHappyPath:
         assert result.digest == []
 
 
+class TestWorkableOnlyScoring:
+    """Only jobs in a location he can take are scored — the rest never reach the digest, so paying
+    to score them is waste. OTHER_US (onsite elsewhere) is dropped before the LLM; remote/metro/
+    Chicago are scored. Off by flag for a full-coverage run."""
+
+    def test_an_onsite_elsewhere_job_is_not_scored(self) -> None:
+        scorer = FakeScorer()
+        run_pipeline(
+            [source(a_job("sf", location="San Francisco, CA", remote=False))],
+            store=FakeStore(),
+            scorer=scorer,
+            profile=PROFILE,
+        )
+
+        assert scorer.calls[0] == []  # nothing handed to the LLM
+
+    def test_remote_and_metro_jobs_are_scored(self) -> None:
+        scorer = FakeScorer()
+        run_pipeline(
+            [source(a_job("remote"), a_job("tampa", location="Tampa, FL", remote=False))],
+            store=FakeStore(),
+            scorer=scorer,
+            profile=PROFILE,
+        )
+
+        assert {j.source_id for j in scorer.calls[0]} == {"remote", "tampa"}
+
+    def test_the_flag_can_be_turned_off_for_full_coverage(self) -> None:
+        scorer = FakeScorer()
+        run_pipeline(
+            [source(a_job("sf", location="San Francisco, CA", remote=False))],
+            store=FakeStore(),
+            scorer=scorer,
+            profile=PROFILE,
+            workable_only=False,
+        )
+
+        assert {j.source_id for j in scorer.calls[0]} == {"sf"}
+
+
 class TestCostGuard:
     """The cold-start guard: a run must never blow the $10 OpenRouter cap. Two levers, both on the
     NEW (post-dedup) jobs so nothing already-seen wastes budget: a freshness cut, and a hard

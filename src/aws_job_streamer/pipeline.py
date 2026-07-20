@@ -29,6 +29,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
 
 from aws_job_streamer.fit import RankedJob, Status, for_digest, rank
+from aws_job_streamer.location_rank import Tier, location_tier
 from aws_job_streamer.models import Job
 from aws_job_streamer.prefilter import keep_worth_scoring
 from aws_job_streamer.scoring import ScoredJob
@@ -99,6 +100,7 @@ def run_pipeline(  # noqa: PLR0913 — each arg is an injected seam or a real tu
     per_company: int | None = None,
     max_age_days: int | None = None,
     max_score_per_run: int | None = None,
+    workable_only: bool = True,
     now: Callable[[], datetime] = _utcnow,
 ) -> PipelineResult:
     """Run one full cycle and return the ranked digest.
@@ -119,8 +121,15 @@ def run_pipeline(  # noqa: PLR0913 — each arg is an injected seam or a real tu
     eligible = keep_worth_scoring(fetched)
     new = store.new_jobs_only(eligible)
 
+    # Score only jobs he could actually take (a workable LOCATION), since only those reach the
+    # digest — paying the LLM to read hundreds of onsite roles that get filtered out anyway is
+    # waste. OTHER_US (onsite in a city he won't relocate to) is dropped before scoring; the cost
+    # is the rare onsite role that secretly allows remote (same blind spot as the app-form case).
+    scoreable = (
+        [j for j in new if location_tier(j) is not Tier.OTHER_US] if workable_only else list(new)
+    )
     to_score = _select_within_budget(
-        new, max_age_days=max_age_days, max_score_per_run=max_score_per_run, now=now
+        scoreable, max_age_days=max_age_days, max_score_per_run=max_score_per_run, now=now
     )
     deferred = len(new) - len(to_score)
 
