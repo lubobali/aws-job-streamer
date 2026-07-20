@@ -154,7 +154,7 @@ class Settings:
     table_name: str = "aws-job-streamer-jobs"
     region: str = "us-east-2"
     sender: str = "jobs@lubobali.com"
-    recipient: str = "lubobali23@gmail.com"
+    recipient: str = "you@example.com"  # placeholder; every real run sets DIGEST_RECIPIENT
     # Cold-start guard, ON by default so the scheduled Lambda can never blow the OpenRouter budget.
     # Measured cost is ~$0.012/job on Sonnet (4x an earlier guess), so the levers below matter: a
     # 14-day freshness cut shrinks a cold start from ~2300 jobs to a few hundred, and scorer_model
@@ -173,7 +173,7 @@ class Settings:
             table_name=os.environ.get("JOBS_TABLE", "aws-job-streamer-jobs"),
             region=os.environ.get("AWS_REGION", "us-east-2"),
             sender=os.environ.get("DIGEST_SENDER", "jobs@lubobali.com"),
-            recipient=os.environ.get("DIGEST_RECIPIENT", "lubobali23@gmail.com"),
+            recipient=os.environ.get("DIGEST_RECIPIENT", "you@example.com"),
             max_age_days=int(os.environ.get("COLD_START_MAX_AGE_DAYS", "14")),
             max_score_per_run=int(os.environ.get("MAX_SCORE_PER_RUN", "200")),
             # `or` not the 2nd arg: an empty SCORER_MODEL (Terraform sets "" to mean "unset") must
