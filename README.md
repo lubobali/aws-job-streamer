@@ -16,6 +16,16 @@ workable matches from every source family. This repo is the production code, not
 
 ---
 
+## What it looks like
+
+Every few hours it emails a ranked digest — a 0–100 fit score, the company, the **workable**
+location, and one honest sentence on why it fits. No links to click through only to discover the
+role is in the wrong city.
+
+![Example aws-job-streamer digest email — "10 new job matches", each row a fit score, company, location, and a one-sentence reason](docs/email-jobs.png)
+
+---
+
 ## Why
 
 Job hunting is a data problem: postings are scattered across dozens of boards, many are stale, and
