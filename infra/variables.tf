@@ -78,9 +78,13 @@ variable "lambda_timeout" {
 }
 
 variable "lambda_memory" {
-  description = "Lambda memory (MB). The work is I/O-bound (HTTP), not memory-bound; 512 is plenty."
+  description = <<-EOT
+    Lambda memory (MB). The work is I/O-bound, but the concurrent fetch holds 128 sources' worth of
+    HTTP responses at once — a 512 MB run peaked at 498 MB, too close to OOM. 1024 gives headroom
+    (and more CPU); at ~270s/run the extra GB-s is a rounding error.
+  EOT
   type        = number
-  default     = 512
+  default     = 1024
 }
 
 variable "max_score_per_run" {
