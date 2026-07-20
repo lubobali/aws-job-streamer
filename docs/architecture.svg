@@ -1,0 +1,109 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 620" font-family="Segoe UI, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L7,3 L0,6 Z" fill="#6b7a90"/>
+    </marker>
+    <filter id="shadow" x="-8%" y="-8%" width="116%" height="130%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#1a2233" flood-opacity="0.14"/>
+    </filter>
+  </defs>
+
+  <!-- card -->
+  <rect x="6" y="6" width="1268" height="608" rx="18" fill="#ffffff" stroke="#e3e8f0" stroke-width="2"/>
+
+  <!-- title -->
+  <text x="40" y="52" font-size="30" font-weight="700" fill="#12233b">aws-job-streamer</text>
+  <text x="42" y="78" font-size="15" fill="#5b6b82">Serverless AWS pipeline — one Lambda per run, scheduled every 4 hours</text>
+  <line x1="40" y1="96" x2="1240" y2="96" stroke="#eef1f6" stroke-width="2"/>
+
+  <!-- triggers -->
+  <text x="40" y="128" font-size="11" font-weight="700" fill="#97a4b6" letter-spacing="1.5">TRIGGERS</text>
+  <g filter="url(#shadow)">
+    <rect x="40" y="138" width="250" height="56" rx="10" fill="#E7157B"/>
+    <rect x="306" y="138" width="250" height="56" rx="10" fill="#E7157B" opacity="0.82"/>
+    <rect x="990" y="138" width="250" height="56" rx="10" fill="#3F8624"/>
+  </g>
+  <text x="165" y="164" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">Amazon EventBridge</text>
+  <text x="165" y="182" text-anchor="middle" font-size="12" fill="#ffe3f0">rate(4 hours) — the run</text>
+  <text x="431" y="164" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">Amazon EventBridge</text>
+  <text x="431" y="182" text-anchor="middle" font-size="12" fill="#ffe3f0">daily — heartbeat email</text>
+  <text x="1115" y="164" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">AWS SSM Parameter Store</text>
+  <text x="1115" y="182" text-anchor="middle" font-size="12" fill="#e2f0da">secrets (SecureString)</text>
+
+  <!-- arrows into panel -->
+  <line x1="165" y1="194" x2="165" y2="236" stroke="#6b7a90" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="431" y1="194" x2="431" y2="236" stroke="#6b7a90" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="1115" y1="194" x2="1115" y2="236" stroke="#6b7a90" stroke-width="2" stroke-dasharray="4 4" marker-end="url(#arrow)"/>
+
+  <!-- Lambda panel -->
+  <rect x="40" y="238" width="1200" height="210" rx="14" fill="#FFF7F0" stroke="#ED7100" stroke-width="2"/>
+  <rect x="60" y="256" width="212" height="32" rx="8" fill="#ED7100"/>
+  <text x="166" y="277" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">AWS Lambda · one run</text>
+  <text x="286" y="277" font-size="12" fill="#a0692f">python 3.13 · 900s timeout · fetches ~130 sources concurrently (~17s)</text>
+
+  <!-- 5 steps -->
+  <!-- step template: box + accent bar + title + 2 lines -->
+  <g filter="url(#shadow)">
+    <rect x="60" y="308" width="212" height="118" rx="10" fill="#fff" stroke="#ece2d5"/>
+    <rect x="288" y="308" width="212" height="118" rx="10" fill="#fff" stroke="#ece2d5"/>
+    <rect x="516" y="308" width="212" height="118" rx="10" fill="#fff" stroke="#ece2d5"/>
+    <rect x="744" y="308" width="212" height="118" rx="10" fill="#fff" stroke="#ece2d5"/>
+    <rect x="972" y="308" width="212" height="118" rx="10" fill="#fff" stroke="#ece2d5"/>
+  </g>
+  <rect x="60" y="308" width="212" height="5" rx="2" fill="#ED7100"/>
+  <rect x="288" y="308" width="212" height="5" rx="2" fill="#1FA5A0"/>
+  <rect x="516" y="308" width="212" height="5" rx="2" fill="#4D72F3"/>
+  <rect x="744" y="308" width="212" height="5" rx="2" fill="#8C4FFF"/>
+  <rect x="972" y="308" width="212" height="5" rx="2" fill="#3F8624"/>
+
+  <text x="166" y="348" text-anchor="middle" font-size="15" font-weight="700" fill="#12233b">1 · Fetch</text>
+  <text x="166" y="374" text-anchor="middle" font-size="12.5" fill="#5b6b82">~130 sources</text>
+  <text x="166" y="392" text-anchor="middle" font-size="12.5" fill="#5b6b82">GH · Lever · Ashby</text>
+  <text x="166" y="410" text-anchor="middle" font-size="12.5" fill="#5b6b82">Workday · Adzuna …</text>
+
+  <text x="394" y="348" text-anchor="middle" font-size="15" font-weight="700" fill="#12233b">2 · Prefilter</text>
+  <text x="394" y="374" text-anchor="middle" font-size="12.5" fill="#5b6b82">US work-eligible</text>
+  <text x="394" y="392" text-anchor="middle" font-size="12.5" fill="#5b6b82">— before spending</text>
+  <text x="394" y="410" text-anchor="middle" font-size="12.5" fill="#5b6b82">a cent on scoring</text>
+
+  <text x="622" y="348" text-anchor="middle" font-size="15" font-weight="700" fill="#12233b">3 · Dedup</text>
+  <text x="622" y="374" text-anchor="middle" font-size="12.5" fill="#5b6b82">DynamoDB store</text>
+  <text x="622" y="392" text-anchor="middle" font-size="12.5" fill="#5b6b82">scored — and paid</text>
+  <text x="622" y="410" text-anchor="middle" font-size="12.5" fill="#5b6b82">for — once, ever</text>
+
+  <text x="850" y="348" text-anchor="middle" font-size="15" font-weight="700" fill="#12233b">4 · LLM score</text>
+  <text x="850" y="374" text-anchor="middle" font-size="12.5" fill="#5b6b82">0–100 vs profile</text>
+  <text x="850" y="392" text-anchor="middle" font-size="12.5" fill="#5b6b82">+ reason &amp; skip-</text>
+  <text x="850" y="410" text-anchor="middle" font-size="12.5" fill="#5b6b82">flags (pluggable)</text>
+
+  <text x="1078" y="348" text-anchor="middle" font-size="15" font-weight="700" fill="#12233b">5 · Rank</text>
+  <text x="1078" y="374" text-anchor="middle" font-size="12.5" fill="#5b6b82">workable first,</text>
+  <text x="1078" y="392" text-anchor="middle" font-size="12.5" fill="#5b6b82">then fit — a job you</text>
+  <text x="1078" y="410" text-anchor="middle" font-size="12.5" fill="#5b6b82">can't take can't win</text>
+
+  <!-- step arrows -->
+  <line x1="272" y1="367" x2="286" y2="367" stroke="#6b7a90" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="500" y1="367" x2="514" y2="367" stroke="#6b7a90" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="728" y1="367" x2="742" y2="367" stroke="#6b7a90" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="956" y1="367" x2="970" y2="367" stroke="#6b7a90" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- outputs -->
+  <text x="40" y="486" font-size="11" font-weight="700" fill="#97a4b6" letter-spacing="1.5">OUTPUT</text>
+  <text x="664" y="486" font-size="11" font-weight="700" fill="#97a4b6" letter-spacing="1.5">MONITORING — fail loud, never silent</text>
+  <g filter="url(#shadow)">
+    <rect x="40" y="496" width="320" height="58" rx="10" fill="#DD344C"/>
+    <rect x="664" y="496" width="264" height="58" rx="10" fill="#CD2264"/>
+    <rect x="944" y="496" width="264" height="58" rx="10" fill="#E7157B"/>
+  </g>
+  <text x="200" y="522" text-anchor="middle" font-size="14" font-weight="700" fill="#fff">Amazon SES</text>
+  <text x="200" y="541" text-anchor="middle" font-size="12" fill="#ffdfe4">ranked digest + daily summary → inbox</text>
+  <text x="796" y="522" text-anchor="middle" font-size="14" font-weight="700" fill="#fff">Amazon CloudWatch</text>
+  <text x="796" y="541" text-anchor="middle" font-size="12" fill="#ffdfe9">Errors / heartbeat alarms</text>
+  <text x="1076" y="522" text-anchor="middle" font-size="14" font-weight="700" fill="#fff">Amazon SNS</text>
+  <text x="1076" y="541" text-anchor="middle" font-size="12" fill="#ffe3f0">alert email</text>
+
+  <!-- output arrows -->
+  <line x1="200" y1="448" x2="200" y2="494" stroke="#6b7a90" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="796" y1="448" x2="796" y2="494" stroke="#6b7a90" stroke-width="2" stroke-dasharray="4 4" marker-end="url(#arrow)"/>
+  <line x1="928" y1="525" x2="942" y2="525" stroke="#6b7a90" stroke-width="2" marker-end="url(#arrow)"/>
+</svg>

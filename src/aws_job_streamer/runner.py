@@ -21,7 +21,7 @@ from typing import Any
 from aws_job_streamer.dedup import JobStore
 from aws_job_streamer.digest import DigestMailer, DigestResult, send_digest
 from aws_job_streamer.pipeline import PipelineResult, run_pipeline
-from aws_job_streamer.scoring import DEFAULT_MODEL, Scorer
+from aws_job_streamer.scoring import DEFAULT_MODEL, build_scorer
 from aws_job_streamer.watchlist import Board, all_sources, to_fetchers
 
 _log = logging.getLogger("aws_job_streamer")
@@ -150,7 +150,7 @@ class Settings:
     """Everything the run needs from the environment. Fails loudly if the API key is missing —
     a silent empty run is indistinguishable from 'nothing was posted today'."""
 
-    openrouter_key: str
+    openrouter_key: str | None = None  # not needed when scorer_backend == "bedrock"
     table_name: str = "aws-job-streamer-jobs"
     region: str = "us-east-2"
     sender: str = "jobs@lubobali.com"
@@ -162,11 +162,14 @@ class Settings:
     max_age_days: int = 14
     max_score_per_run: int = 200
     scorer_model: str = DEFAULT_MODEL
+    scorer_backend: str = "openrouter"  # "bedrock" once the AWS quota grant lands (case ...944)
 
     @classmethod
     def from_env(cls) -> Settings:
+        backend = (os.environ.get("SCORER_BACKEND") or "openrouter").lower()
         key = os.environ.get("OPENROUTER_API_KEY")
-        if not key:
+        # Bedrock authenticates via the Lambda's IAM role, so it needs no key; OpenRouter does.
+        if backend == "openrouter" and not key:
             raise RuntimeError("OPENROUTER_API_KEY is not set (see .env.example)")
         return cls(
             openrouter_key=key,
@@ -179,6 +182,7 @@ class Settings:
             # `or` not the 2nd arg: an empty SCORER_MODEL (Terraform sets "" to mean "unset") must
             # fall through to the code default, not become a blank model id.
             scorer_model=os.environ.get("SCORER_MODEL") or DEFAULT_MODEL,
+            scorer_backend=backend,
         )
 
 
@@ -200,7 +204,14 @@ def run(
 
     sources = to_fetchers(boards) if boards is not None else all_sources()
     store = JobStore(table_name=settings.table_name, region=settings.region)
-    scorer = Scorer(api_key=settings.openrouter_key, profile=profile, model=settings.scorer_model)
+    scorer = build_scorer(
+        profile,
+        api_key=settings.openrouter_key,
+        # OpenRouter uses the concrete slug; Bedrock picks its own default (blank -> its constant).
+        model=settings.scorer_model if settings.scorer_backend == "openrouter" else "",
+        region=settings.region,
+        backend=settings.scorer_backend,
+    )
 
     result = run_pipeline(
         sources,

@@ -4,8 +4,8 @@
 > one against a target profile, keeps only the roles you could actually take, and emails a ranked
 > digest — plus a daily "still alive" summary and CloudWatch alarms so it's never silently broken.
 
+[![CI](https://github.com/lubobali/aws-job-streamer/actions/workflows/ci.yml/badge.svg)](https://github.com/lubobali/aws-job-streamer/actions/workflows/ci.yml)
 ![Status](https://img.shields.io/badge/status-live%20%26%20running-brightgreen)
-![Tests](https://img.shields.io/badge/tests-616%20passing-brightgreen)
 ![AWS](https://img.shields.io/badge/AWS-Lambda%20%C2%B7%20DynamoDB%20%C2%B7%20EventBridge%20%C2%B7%20SES-orange)
 ![IaC](https://img.shields.io/badge/IaC-Terraform-7B42BC)
 ![Python](https://img.shields.io/badge/Python-3.13-3776AB)
@@ -45,19 +45,7 @@ senior way: probe every API before writing a fetcher, test-first, and write down
 
 ## Architecture
 
-```mermaid
-flowchart LR
-    EB[EventBridge<br/>rate 4h] --> L[Lambda: full run]
-    HB[EventBridge<br/>daily] -->|mode=heartbeat| L
-    L --> FE[Fetch ~130 sources<br/>concurrent]
-    FE --> PF[Prefilter<br/>US-eligible]
-    PF --> DD[(DynamoDB<br/>dedup + store)]
-    DD --> SC[LLM score 0–100<br/>pluggable scorer]
-    SC --> RK[Rank: workable, then fit]
-    RK --> SES[SES: ranked digest]
-    L -.heartbeat/errors.-> CW[CloudWatch<br/>alarms] --> SNS[SNS email]
-    SSM[SSM Parameter Store<br/>secrets] -.-> L
-```
+![Architecture — EventBridge triggers a Lambda that fetches ~130 sources, prefilters for US eligibility, dedupes in DynamoDB, LLM-scores each new role, ranks workable-first, and emails a digest via SES; CloudWatch and SNS handle alarms; secrets live in SSM.](docs/architecture.svg)
 
 ## Tech stack
 
@@ -68,7 +56,7 @@ flowchart LR
 | Compute | AWS Lambda (single-function pipeline) |
 | Scheduling | Amazon EventBridge (`rate(4 hours)` + daily heartbeat) |
 | Data store | Amazon DynamoDB (dedup + job store) |
-| LLM scoring | Pluggable scorer — OpenRouter (Claude Haiku 4.5) today; **Amazon Bedrock migration in progress** (see Roadmap) |
+| LLM scoring | Pluggable scorer (`SCORER_BACKEND`) — OpenRouter (Claude Haiku 4.5) live today; **Amazon Bedrock backend implemented & unit-tested**, pending a quota grant to validate and flip (same model, IAM auth) |
 | Notifications | Amazon SES (digest + heartbeat email) |
 | Observability | Amazon CloudWatch (alarms) + SNS (alert email) |
 | Secrets | AWS SSM Parameter Store (SecureString) |
@@ -102,7 +90,10 @@ A few things this project got right the hard way, written up in the code and `PL
 - [x] **Phase 2** — LLM fit-scoring against a profile + US-eligibility prefilter
 - [x] **Phase 3** — Ranked email digest + daily heartbeat summary
 - [x] **Phase 4** — Deployed to serverless AWS (Lambda, EventBridge, DynamoDB, SES, CloudWatch) via Terraform
-- [ ] **Phase 5** — CI/CD (GitHub Actions), fuller docs, and the **Bedrock migration** (swap the scorer from OpenRouter to Amazon Bedrock behind the existing boundary — same model, AWS-native auth; pending a quota grant)
+- [ ] **Phase 5** — hardening & polish
+  - [x] CI: GitHub Actions runs ruff + the full test suite on every push (badge above)
+  - [x] **Amazon Bedrock backend** implemented behind `SCORER_BACKEND=bedrock` and unit-tested — a config flip, not a code change, once the quota grant lands and the model id is confirmed
+  - [ ] Validate Bedrock live and make it the default; fuller setup docs
 
 ## License
 

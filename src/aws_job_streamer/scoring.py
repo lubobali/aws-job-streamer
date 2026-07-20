@@ -19,12 +19,16 @@ description is therefore fenced and named as untrusted, and it cannot close its 
 from __future__ import annotations
 
 import json
+import os
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Protocol
 
+import boto3
 import httpx
+from botocore.config import Config
+from botocore.exceptions import BotoCoreError, ClientError
 
 from aws_job_streamer.models import Job
 
@@ -35,6 +39,12 @@ steady-state at ~$18/mo, over the $10 budget; Haiku is ~1/3 that (~$6/mo). On a 
 (strong TARGETs, off-target PUNTs, a negative) Haiku matched Sonnet's email/no-email floor decision
 8/9 — it compresses absolute scores toward the middle but preserves the >=65 classification that
 shapes the digest. Override per-run with SCORER_MODEL (e.g. back to sonnet-4.5) if quality slips."""
+
+BEDROCK_DEFAULT_MODEL = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+"""Bedrock cross-region inference profile for Haiku 4.5 in us-east-2 — the SAME model as the
+OpenRouter default, so switching providers does not change the scoring. This exact id must be
+confirmed with `aws bedrock list-inference-profiles` the moment the quota grant lands (support
+case 178415398200944); it is unvalidated until then because the account has zero Bedrock quota."""
 
 MIN_SCORE = 0
 MAX_SCORE = 100
@@ -289,17 +299,111 @@ class Scorer:
         return _to_scored_job(job, parse_response(content))
 
     def score_many(self, jobs: Sequence[Job]) -> list[ScoredJob]:
-        """Score a batch, skipping any job that fails.
+        """Score a batch, skipping any job that fails (see `_score_each`)."""
+        return _score_each(self, jobs)
 
-        One unscoreable job must not lose the run — the same rule the Workday fetcher follows.
-        """
-        scored = []
-        for job in jobs:
-            try:
-                scored.append(self.score(job))
-            except ScoringError:
-                continue
-        return scored
+
+class _ScoresOne(Protocol):
+    def score(self, job: Job) -> ScoredJob: ...
+
+
+def _score_each(scorer: _ScoresOne, jobs: Sequence[Job]) -> list[ScoredJob]:
+    """Score a batch, skipping any job that fails.
+
+    One unscoreable job must not lose the run — the same rule the Workday fetcher follows. Shared
+    by every scorer backend so the skip-and-continue behaviour is identical no matter the provider.
+    """
+    scored = []
+    for job in jobs:
+        try:
+            scored.append(scorer.score(job))
+        except ScoringError:
+            continue
+    return scored
+
+
+@dataclass(frozen=True, slots=True)
+class BedrockScorer:
+    """Scores jobs through Amazon Bedrock's Anthropic Messages API — the AWS-native provider.
+
+    Same boundary as `Scorer`: it reuses `build_prompt`/`parse_response`/`_to_scored_job`, so the
+    scoring logic is provider-independent and only the transport differs. boto3 (already a dep,
+    IAM-authenticated) instead of an HTTP key — no `$10/mo` OpenRouter cap, no plaintext secret.
+
+    UNVALIDATED until the Bedrock quota grant lands (case 178415398200944): the account has zero
+    quota, so this path cannot be exercised live yet. `client` is injectable so the request-shaping
+    and response-parsing ARE unit-tested now; flipping `SCORER_BACKEND=bedrock` is a config change,
+    not a code change, once quota + the model id are confirmed.
+    """
+
+    profile: dict[str, Any]
+    model: str = BEDROCK_DEFAULT_MODEL
+    region: str = "us-east-2"
+    timeout: float = 90.0
+    client: Any = None  # injected in tests; a real bedrock-runtime client is built lazily otherwise
+
+    def _runtime(self) -> Any:  # noqa: ANN401 — a boto3 client is untyped
+        if self.client is not None:
+            return self.client
+        return boto3.client(
+            "bedrock-runtime",
+            region_name=self.region,
+            config=Config(read_timeout=self.timeout, retries={"max_attempts": 2}),
+        )
+
+    def score(self, job: Job) -> ScoredJob:
+        """Score one job via Bedrock. Raises ScoringError rather than inventing a number."""
+        body = json.dumps(
+            {
+                "anthropic_version": "bedrock-2023-05-31",
+                "max_tokens": 400,
+                "messages": [
+                    {"role": "user", "content": build_prompt(job, profile=self.profile)}
+                ],
+            }
+        )
+        try:
+            response = self._runtime().invoke_model(modelId=self.model, body=body)
+            payload = json.loads(response["body"].read())
+        except (BotoCoreError, ClientError) as exc:
+            raise ScoringError(f"scoring {job.title!r} via Bedrock failed: {exc}") from exc
+        except ValueError as exc:
+            raise ScoringError(f"scoring {job.title!r} returned non-JSON") from exc
+
+        try:
+            content = payload["content"][0]["text"]
+        except (KeyError, IndexError, TypeError) as exc:
+            raise ScoringError(f"unexpected Bedrock reply shape: {str(payload)[:120]}") from exc
+
+        return _to_scored_job(job, parse_response(content))
+
+    def score_many(self, jobs: Sequence[Job]) -> list[ScoredJob]:
+        """Score a batch, skipping any job that fails (see `_score_each`)."""
+        return _score_each(self, jobs)
+
+
+def build_scorer(
+    profile: dict[str, Any],
+    *,
+    api_key: str | None = None,
+    model: str = "",
+    region: str = "us-east-2",
+    backend: str | None = None,
+) -> _ScoresOne:
+    """Pick a scorer backend from config — OpenRouter today, Bedrock when quota lands.
+
+    `backend` defaults to `$SCORER_BACKEND` then "openrouter", so nothing changes until it is set
+    to "bedrock" explicitly. An empty `model` means "use that backend's default", so the same
+    `SCORER_MODEL` env can stay blank across a provider switch.
+    """
+    backend = (backend or os.environ.get("SCORER_BACKEND") or "openrouter").lower()
+    if backend == "bedrock":
+        return BedrockScorer(profile=profile, model=model or BEDROCK_DEFAULT_MODEL, region=region)
+    if backend != "openrouter":
+        raise ScoringError(f"unknown SCORER_BACKEND {backend!r} (expected openrouter | bedrock)")
+    if not api_key:
+        raise ScoringError("OpenRouter backend needs an api_key (set OPENROUTER_API_KEY)")
+    return Scorer(api_key=api_key, profile=profile, model=model or DEFAULT_MODEL)
 
 
 def _to_scored_job(job: Job, data: dict[str, Any]) -> ScoredJob:
