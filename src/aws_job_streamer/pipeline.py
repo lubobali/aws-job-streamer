@@ -23,6 +23,7 @@ nothing-new run.
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
@@ -171,20 +172,27 @@ def _select_within_budget(
     return kept
 
 
-def _fetch_all(sources: Sequence[Fetcher]) -> tuple[list[Job], int]:
-    """Fetch every source, isolating failures.
+def _fetch_all(sources: Sequence[Fetcher], *, max_workers: int = 16) -> tuple[list[Job], int]:
+    """Fetch every source CONCURRENTLY, isolating failures.
 
-    A source is a live network call — a dead board, a rate limit, a shape change. Any one may
-    throw, and losing the whole run because one board is down would be the opposite of resilient
-    (the same lesson as the Workday and Adzuna fetchers). So each is caught and counted, and the
-    rest proceed. The broad except is deliberate: we cannot enumerate every way a third-party
-    call fails, and dropping one source is always safe.
+    Fetching is pure network I/O, so the sources run in a thread pool: 128 sources done in roughly
+    the time of the slowest single one (~a minute), not the SUM of all of them (which blew past the
+    Lambda's 900s timeout and is exactly what a big funnel demands). Order does not matter — jobs
+    are deduped, scored and ranked downstream.
+
+    A source is a live call that may fail many ways (dead board, rate limit, shape change); each
+    failure is caught and counted, and the rest proceed. The broad except is deliberate: we cannot
+    enumerate every third-party failure, and dropping one source is always safe.
     """
     jobs: list[Job] = []
     failures = 0
-    for fetch in sources:
-        try:
-            jobs.extend(fetch())
-        except Exception:  # broad on purpose: per-source isolation is a hard requirement here
-            failures += 1
+    if not sources:
+        return jobs, failures
+    with ThreadPoolExecutor(max_workers=min(max_workers, len(sources))) as pool:
+        futures = [pool.submit(fetch) for fetch in sources]
+        for future in as_completed(futures):
+            try:
+                jobs.extend(future.result())
+            except Exception:  # broad on purpose: per-source isolation is a hard requirement here
+                failures += 1
     return jobs, failures
